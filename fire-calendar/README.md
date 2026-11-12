@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# FireSync
 
-## Getting Started
+Harmonized MODIS + VIIRS burning activity calendar. NASA Space Apps Challenge 2026.
 
-First, run the development server:
+## Запуск
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- `http://localhost:3000` — лендинг
+- `http://localhost:3000/explore` — прототип календаря (пока на тестовых данных)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Подключение бэкенда
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Скопируй `.env.example` в `.env.local` и укажи адрес Django:
 
-## Learn More
+```
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
 
-To learn more about Next.js, take a look at the following resources:
+Пока переменная пустая, `./lib/api.ts` отдаёт моки из `lib/mock.ts`.
+Форматы ответов описаны в `./types/api.ts`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Структура
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```
+./
+app/
+    page.tsx              лендинг (секции: hero, problem, how, features, team, cta)
+    explore/page.tsx      страница календаря
+  components/
+    ui/index.tsx          базовые элементы: Section, Card, Button, Select, Stat, Placeholder
+    layout/               Header, Footer
+    explore/              Explorer (логика страницы), YearCalendar, DayStrip,
+                          MonthlyChart, FireMap, легенды
+  lib/
+    api.ts                запросы к API / моки, CSV-экспорт
+    useApi.ts             хук загрузки данных
+    mock.ts               тестовые данные
+    colors.ts             цветовые шкалы для данных (календарь, карта)
+  types/api.ts            типы ответов API
+```
 
-## Deploy on Vercel
+## Как натянуть дизайн
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Стилей сейчас нет, только раскладка и рамки-заглушки.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Цвета и шрифты: `./app/globals.css`, блок `@theme`.
+2. Кнопки, карточки, поля: `./components/ui/index.tsx`. Их используют все страницы.
+3. Шапка и подвал: `./components/layout/`.
+4. Цвета данных (тепловая шкала, MODIS/VIIRS): `./lib/colors.ts`.
+5. Места с пометкой `TODO` в коде ждут контент из дизайна (логотип, картинка в hero, команда).
