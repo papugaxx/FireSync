@@ -8,7 +8,7 @@ const NAV = [
 
 export default function Header() {
   return (
-    <header className="border-b">
+    <header style={{ backgroundColor: 'rgba(17, 24, 39, 1)' }} className="border-b text-[white]">
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
         <Link href="/" className="font-semibold">
           {/* TODO: логотип */}
