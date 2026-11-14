@@ -4,11 +4,13 @@ import type {
   CalendarResponse,
   HotspotsResponse,
   MetaResponse,
+  MonthlyResponse,
   MonthResponse,
   Region,
 } from "@/types/api";
 
 export const REGIONS: Region[] = [
+  { id: "world", name: "World", bbox: [-58, -170, 75, 180] },
   { id: "ukraine", name: "Ukraine", bbox: [44.3, 22.1, 52.4, 40.2] },
   { id: "argentina", name: "Argentina", bbox: [-55.1, -73.6, -21.8, -53.6] },
   { id: "california", name: "California, USA", bbox: [32.5, -124.4, 42.0, -114.1] },
@@ -19,6 +21,7 @@ export const YEARS = Array.from({ length: 25 }, (_, i) => 2001 + i); // 2001..20
 
 // Сезонность: в каком месяце пик пожаров (0 = январь) и его сила
 const SEASON: Record<string, { peak: number; second?: number; scale: number }> = {
+  world: { peak: 7, second: 1, scale: 60000 },
   ukraine: { peak: 7, second: 3, scale: 900 },
   argentina: { peak: 8, second: 0, scale: 1400 },
   california: { peak: 7, scale: 700 },
@@ -102,16 +105,20 @@ export function mockHotspots(regionId: string, year: number, month: number): Hot
   const region = REGIONS.find((x) => x.id === regionId) ?? REGIONS[0];
   const [s, w, n, e] = region.bbox;
   const r = rng(hash(`hs-${regionId}-${year}-${month}`));
-  const count = Math.min(400, Math.round(monthWeight(regionId, month - 1) / 6) + 20);
+  const isWorld = regionId === "world";
+  const count = isWorld ? 2500 : Math.min(400, Math.round(monthWeight(regionId, month - 1) / 6) + 20);
   // пожары кучкуются: несколько центров, вокруг них точки
-  const centers = Array.from({ length: 6 }, () => [s + r() * (n - s), w + r() * (e - w)]);
+  const centers = isWorld
+    ? WORLD_FIRE_BELTS
+    : Array.from({ length: 6 }, () => [s + r() * (n - s), w + r() * (e - w)]);
+  const spread = isWorld ? [6, 9] : [(n - s) * 0.15, (e - w) * 0.15];
   const hotspots = Array.from({ length: count }, (_, i) => {
     const [clat, clon] = centers[Math.floor(r() * centers.length)];
     const roll = r();
     return {
       id: `${regionId}-${i}`,
-      lat: clat + (r() - 0.5) * (n - s) * 0.15,
-      lon: clon + (r() - 0.5) * (e - w) * 0.15,
+      lat: clat + (r() - 0.5) * spread[0] * (isWorld ? r() * 2 : 1),
+      lon: clon + (r() - 0.5) * spread[1] * (isWorld ? r() * 2 : 1),
       date: `${year}-${String(month).padStart(2, "0")}-${String(1 + Math.floor(r() * 28)).padStart(2, "0")}`,
       seenBy: (year < 2012 ? "MODIS" : roll < 0.15 ? "MODIS" : roll < 0.6 ? "VIIRS" : "BOTH") as
         | "MODIS"
@@ -121,4 +128,29 @@ export function mockHotspots(regionId: string, year: number, month: number): Hot
     };
   });
   return { region: regionId, from: `${year}-${month}-01`, to: `${year}-${month}-28`, hotspots };
+}
+
+// Примерные центры пожарных поясов планеты (только для мок-карты мира)
+const WORLD_FIRE_BELTS: number[][] = [
+  [10, -5], [9, 10], [8, 22], [6, 30], [-12, 25], [-15, 35], [-20, 30], [-19, 47],
+  [-8, -50], [-12, -45], [-18, -55], [-5, -62], [-28, -60], [5, -72],
+  [22, 80], [18, 77], [15, 100], [12, 105], [-2, 113], [50, 128], [55, 95],
+  [35, -85], [33, -95], [40, -120], [55, -115], [48, 35], [52, 55],
+  [-25, 135], [-15, 130], [-32, 145], [38, 0], [42, 20],
+];
+
+export function mockMonthly(regionId: string, year: number): MonthlyResponse {
+  const cal = mockCalendar(regionId);
+  const row = cal.years.find((y) => y.year === year) ?? cal.years[cal.years.length - 1];
+  const r = rng(hash(`monthly-${regionId}-${year}`));
+  return {
+    region: regionId,
+    year,
+    months: row.months.map((v, i) => ({
+      month: i + 1,
+      modis: v,
+      // VIIRS после гармонизации близок к MODIS; до 2012 года VIIRS ещё не летал
+      viirs: v === null || year < 2012 ? null : Math.round(v * (0.85 + r() * 0.3)),
+    })),
+  };
 }
