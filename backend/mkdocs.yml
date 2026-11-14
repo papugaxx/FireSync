@@ -1,0 +1,65 @@
+site_name: FireSync
+site_description: Documentation for the FireSync backend API, data pipeline and frontend
+# Lets you also open site/index.html straight from disk (local use only)
+use_directory_urls: false
+theme:
+  name: material
+  palette:
+    scheme: slate
+  features:
+    - navigation.sections
+    - navigation.top
+    - toc.integrate
+    - content.code.copy
+    - search.highlight
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [., data_pipeline]
+          options:
+            show_if_no_docstring: true
+            members_order: source
+            show_root_heading: true
+            show_source: false
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Concepts:
+      - Grid and calendar: concepts/grid-and-calendar.md
+      - Harmonization: concepts/harmonization.md
+      - Architecture: concepts/architecture.md
+  - HTTP API:
+      - Overview: api/overview.md
+      - Endpoints: api/endpoints.md
+  - Data pipeline:
+      - Command line: pipeline/cli.md
+      - Data model: pipeline/data-model.md
+  - Operations:
+      - Configuration: operations/configuration.md
+      - Deployment: operations/deployment.md
+      - Troubleshooting: operations/troubleshooting.md
+  - Development:
+      - Testing: development/testing.md
+      - Frontend: development/frontend.md
+      - Writing documentation: development/documentation.md
+  - API reference:
+      - main: reference/main.md
+      - grid_index: reference/grid_index.md
+      - analytics: reference/analytics.md
+      - db: reference/db.md
+      - config: reference/config.md
+      - Data pipeline: reference/pipeline.md
