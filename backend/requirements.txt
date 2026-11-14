@@ -1,2 +1,9 @@
-fastapi
-uvicorn
+fastapi>=0.110
+uvicorn[standard]>=0.29
+
+# для тестов
+pytest>=8
+httpx>=0.27
+
+# Модуль напарника ставится отдельной командой (он лежит рядом, в data_pipeline):
+#   pip install -e ./data_pipeline

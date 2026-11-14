@@ -1,0 +1,2 @@
+[console_scripts]
+fires-data = fires_data.cli:main
