@@ -1,0 +1,47 @@
+{
+  "snapshot_created_at_utc": "2026-11-14T11:56:40+00:00",
+  "copy_method": "SQLite VACUUM INTO consistent snapshot",
+  "schema_version": 1,
+  "stored_observations": 4893436,
+  "loaded_windows": 166,
+  "coverage": [
+    {
+      "source_code": "MODIS_NRT",
+      "loaded_days": 1,
+      "first_day": "2026-11-12",
+      "last_day": "2026-11-12",
+      "observations": 9252
+    },
+    {
+      "source_code": "MODIS_SP",
+      "loaded_days": 132,
+      "first_day": "2000-11-01",
+      "last_day": "2024-08-31",
+      "observations": 1262957
+    },
+    {
+      "source_code": "VIIRS_NOAA20_NRT",
+      "loaded_days": 1,
+      "first_day": "2026-11-12",
+      "last_day": "2026-11-12",
+      "observations": 49061
+    },
+    {
+      "source_code": "VIIRS_NOAA20_SP",
+      "loaded_days": 31,
+      "first_day": "2024-08-01",
+      "last_day": "2024-08-31",
+      "observations": 3526897
+    },
+    {
+      "source_code": "VIIRS_SNPP_SP",
+      "loaded_days": 1,
+      "first_day": "2012-01-20",
+      "last_day": "2012-01-20",
+      "observations": 45269
+    }
+  ],
+  "coverage_note": "First/last dates do not imply all intermediate dates are loaded. Complete paired month: August 2024, MODIS and VIIRS NOAA-20.",
+  "database_sha256": "72e9cc2447aefbb5835ed0f90dabb8e2083f315107f84daa42d3afe75976b9cd",
+  "database_bytes": 3034062848
+}

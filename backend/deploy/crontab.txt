@@ -1,0 +1,6 @@
+# Расписание обновления данных (cron). Установка от пользователя firesync:
+#   crontab deploy/crontab.txt
+# Проверить:  crontab -l        Лог:  tail -f /srv/FireSync/backend/cache/update.log
+
+# Каждые 3 часа (в 17 минут): свежие данные NASA + обновление индекса
+17 */3 * * * /srv/FireSync/backend/deploy/update.sh >> /srv/FireSync/backend/cache/update.log 2>&1

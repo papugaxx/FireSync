@@ -1,0 +1,844 @@
+{
+  "status": "improved_on_holdout",
+  "exploratory": true,
+  "apply_automatically": false,
+  "coefficient": 0.33423036701129827,
+  "training_mean_reference": 88.76190476190476,
+  "model": {
+    "candidate": "nonnegative_scale_without_intercept",
+    "formula": "MODIS_reference_index = a * NOAA20_active_cells",
+    "fit": "a = max(0, sum(train_x * train_y) / sum(train_x ** 2))",
+    "model_selected_on_test": false,
+    "min_train_pairs": 14,
+    "min_test_pairs": 7,
+    "thresholds_are_operational_not_statistical_guarantees": true,
+    "improvement_rule": "test MAE must beat raw and training-mean benchmarks with numeric tolerance"
+  },
+  "domain": {
+    "scope_id": "world",
+    "bbox": [
+      22.0,
+      44.0,
+      41.0,
+      53.0
+    ],
+    "date_from": "2024-08-01",
+    "date_to": "2024-08-31",
+    "split_date": "2024-08-22",
+    "profile_id": "common-grid-0p1deg-v1",
+    "reference": "MODIS Terra+Aqua common-grid cell union",
+    "predictor": "VIIRS NOAA-20 common-grid active cells",
+    "train_paired_from": "2024-08-01",
+    "train_paired_to": "2024-08-21",
+    "test_paired_from": "2024-08-22",
+    "test_paired_to": "2024-08-31"
+  },
+  "pairs": {
+    "train": 21,
+    "test": 10,
+    "skipped_missing": 0,
+    "requested_days": 31
+  },
+  "metrics": {
+    "train": {
+      "raw": {
+        "mae": 182.85714285714286,
+        "bias": 182.85714285714286,
+        "rmse": 193.62408350792967,
+        "r2": -15.839183972785513
+      },
+      "calibrated": {
+        "mae": 22.086166074875905,
+        "bias": 2.021429211068825,
+        "rmse": 29.627264536526514,
+        "r2": 0.6057375629920263
+      },
+      "training_mean": {
+        "mae": 35.25170068027211,
+        "bias": -2.7068294695622863e-15,
+        "rmse": 47.18444534045269,
+        "r2": 0.0
+      }
+    },
+    "test": {
+      "raw": {
+        "mae": 223.3,
+        "bias": 223.3,
+        "rmse": 235.13761927858332,
+        "r2": -30.19112495134294
+      },
+      "calibrated": {
+        "mae": 34.51937592744404,
+        "bias": -12.382450078000414,
+        "rmse": 41.80036061282505,
+        "r2": 0.01429522153084084
+      },
+      "training_mean": {
+        "mae": 46.642857142857146,
+        "bias": -41.938095238095244,
+        "rmse": 59.42570009852258,
+        "r2": -0.9922113900968328
+      }
+    }
+  },
+  "daily": [
+    {
+      "date": "2024-08-01",
+      "split": "train",
+      "reference": 135,
+      "original": 349,
+      "calibrated": 116.6463980869431
+    },
+    {
+      "date": "2024-08-02",
+      "split": "train",
+      "reference": 64,
+      "original": 287,
+      "calibrated": 95.92411533224261
+    },
+    {
+      "date": "2024-08-03",
+      "split": "train",
+      "reference": 139,
+      "original": 303,
+      "calibrated": 101.27180120442337
+    },
+    {
+      "date": "2024-08-04",
+      "split": "train",
+      "reference": 34,
+      "original": 113,
+      "calibrated": 37.768031472276704
+    },
+    {
+      "date": "2024-08-05",
+      "split": "train",
+      "reference": 26,
+      "original": 125,
+      "calibrated": 41.77879587641228
+    },
+    {
+      "date": "2024-08-06",
+      "split": "train",
+      "reference": 37,
+      "original": 125,
+      "calibrated": 41.77879587641228
+    },
+    {
+      "date": "2024-08-07",
+      "split": "train",
+      "reference": 32,
+      "original": 143,
+      "calibrated": 47.79494248261565
+    },
+    {
+      "date": "2024-08-08",
+      "split": "train",
+      "reference": 66,
+      "original": 180,
+      "calibrated": 60.16146606203369
+    },
+    {
+      "date": "2024-08-09",
+      "split": "train",
+      "reference": 47,
+      "original": 197,
+      "calibrated": 65.84338230122576
+    },
+    {
+      "date": "2024-08-10",
+      "split": "train",
+      "reference": 59,
+      "original": 228,
+      "calibrated": 76.20452367857601
+    },
+    {
+      "date": "2024-08-11",
+      "split": "train",
+      "reference": 73,
+      "original": 261,
+      "calibrated": 87.23412578994885
+    },
+    {
+      "date": "2024-08-12",
+      "split": "train",
+      "reference": 88,
+      "original": 299,
+      "calibrated": 99.93487973637818
+    },
+    {
+      "date": "2024-08-13",
+      "split": "train",
+      "reference": 102,
+      "original": 232,
+      "calibrated": 77.5414451466212
+    },
+    {
+      "date": "2024-08-14",
+      "split": "train",
+      "reference": 89,
+      "original": 286,
+      "calibrated": 95.5898849652313
+    },
+    {
+      "date": "2024-08-15",
+      "split": "train",
+      "reference": 91,
+      "original": 323,
+      "calibrated": 107.95640854464934
+    },
+    {
+      "date": "2024-08-16",
+      "split": "train",
+      "reference": 82,
+      "original": 324,
+      "calibrated": 108.29063891166064
+    },
+    {
+      "date": "2024-08-17",
+      "split": "train",
+      "reference": 104,
+      "original": 347,
+      "calibrated": 115.9779373529205
+    },
+    {
+      "date": "2024-08-18",
+      "split": "train",
+      "reference": 136,
+      "original": 372,
+      "calibrated": 124.33369652820295
+    },
+    {
+      "date": "2024-08-19",
+      "split": "train",
+      "reference": 145,
+      "original": 373,
+      "calibrated": 124.66792689521425
+    },
+    {
+      "date": "2024-08-20",
+      "split": "train",
+      "reference": 228,
+      "original": 406,
+      "calibrated": 135.6975290065871
+    },
+    {
+      "date": "2024-08-21",
+      "split": "train",
+      "reference": 87,
+      "original": 431,
+      "calibrated": 144.05328818186956
+    },
+    {
+      "date": "2024-08-22",
+      "split": "test",
+      "reference": 124,
+      "original": 282,
+      "calibrated": 94.25296349718612
+    },
+    {
+      "date": "2024-08-23",
+      "split": "test",
+      "reference": 66,
+      "original": 244,
+      "calibrated": 81.55220955075677
+    },
+    {
+      "date": "2024-08-24",
+      "split": "test",
+      "reference": 100,
+      "original": 349,
+      "calibrated": 116.6463980869431
+    },
+    {
+      "date": "2024-08-25",
+      "split": "test",
+      "reference": 176,
+      "original": 399,
+      "calibrated": 133.357916437508
+    },
+    {
+      "date": "2024-08-26",
+      "split": "test",
+      "reference": 142,
+      "original": 485,
+      "calibrated": 162.10172800047965
+    },
+    {
+      "date": "2024-08-27",
+      "split": "test",
+      "reference": 118,
+      "original": 258,
+      "calibrated": 86.23143468891496
+    },
+    {
+      "date": "2024-08-28",
+      "split": "test",
+      "reference": 88,
+      "original": 320,
+      "calibrated": 106.95371744361545
+    },
+    {
+      "date": "2024-08-29",
+      "split": "test",
+      "reference": 153,
+      "original": 367,
+      "calibrated": 122.66254469314646
+    },
+    {
+      "date": "2024-08-30",
+      "split": "test",
+      "reference": 219,
+      "original": 356,
+      "calibrated": 118.98601065602219
+    },
+    {
+      "date": "2024-08-31",
+      "split": "test",
+      "reference": 121,
+      "original": 480,
+      "calibrated": 160.43057616542316
+    }
+  ],
+  "skipped_days": [],
+  "reasons": [],
+  "input_method": {
+    "id": "common-grid-0p1deg-v1",
+    "harmonized": false,
+    "harmonization_status": "not_calibrated",
+    "r2": null,
+    "grid_degrees": 0.1,
+    "grid_crs": "EPSG:4326",
+    "time_basis": "UTC",
+    "origin": {
+      "longitude": -180,
+      "latitude": -90
+    },
+    "coordinate_quantization_degrees": 1e-07,
+    "coordinate_rounding": "nearest integer tick; halfway away from zero",
+    "daily_unit": "active_cells_per_UTC_day",
+    "total_unit": "active_cell_days",
+    "modis_platforms": [
+      "Terra",
+      "Aqua"
+    ],
+    "modis_combination": "union of occupied cells per UTC day",
+    "viirs_platforms": [
+      "NOAA-20"
+    ],
+    "processing_preference": "loaded SP, otherwise loaded NRT, per family and UTC day",
+    "confidence_filter": "all",
+    "type_filter": "all",
+    "wildfire_only": false,
+    "equal_area": false,
+    "burned_area": false,
+    "bbox_semantics": "inclusive rectangle; observations filtered before cell grouping",
+    "interpretation": "Observed active cell-days, not unique fires or burned area; platform exposures differ."
+  },
+  "input_windows": [
+    {
+      "day": "2024-08-01",
+      "source_code": "MODIS_SP",
+      "checksum": "71f54459e1ad33b9347ca7936817fc19c12b30b9d50573af4c01a0425d7c6d9a",
+      "fetched_at": "2026-11-13T22:17:47Z",
+      "row_count": 17484,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-01",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "6fb305209228af5685ed2733d2f73fd699ad10615dab4aeb12407d4801d1b114",
+      "fetched_at": "2026-11-13T22:21:19Z",
+      "row_count": 86717,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-02",
+      "source_code": "MODIS_SP",
+      "checksum": "941e224d70350c0ec51c6736d34c0f3395c0e5f0a7d07a6b1bfc43885db8febf",
+      "fetched_at": "2026-11-13T22:17:51Z",
+      "row_count": 24493,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-02",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "384f277a8369fde796797d137cb3992abb3061eb508835c925ed96de379560cc",
+      "fetched_at": "2026-11-13T22:21:41Z",
+      "row_count": 98882,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-03",
+      "source_code": "MODIS_SP",
+      "checksum": "f931f69b7c9829bed55bdca1407559c07bd392e2bfbde955547e8646187ac690",
+      "fetched_at": "2026-11-13T22:17:56Z",
+      "row_count": 25302,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-03",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "1df8bc3b52a76a3e196c3f103f3a0ff80a6e4e3c84637eb8695a80254d2eac22",
+      "fetched_at": "2026-11-13T22:21:57Z",
+      "row_count": 102493,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-04",
+      "source_code": "MODIS_SP",
+      "checksum": "66d6002494311919ee178fd4927a7a3ab98a1e8072e924616424e96dad142672",
+      "fetched_at": "2026-11-13T22:18:02Z",
+      "row_count": 19511,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-04",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "848df08ce9bd338f1b5fb27cae1abdf0bf205a2d3881b849eedfddb600267e72",
+      "fetched_at": "2026-11-13T22:22:07Z",
+      "row_count": 81480,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-05",
+      "source_code": "MODIS_SP",
+      "checksum": "1a71eb31c8da954f2250567f1d099ff45ebed5c971138ef8898061c8345c0203",
+      "fetched_at": "2026-11-13T22:18:06Z",
+      "row_count": 24887,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-05",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "57e273ad9d38d7edf7d8ed4113092031fde7b1bc75d4547bcced30f16d1cec5a",
+      "fetched_at": "2026-11-13T22:22:18Z",
+      "row_count": 108093,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-06",
+      "source_code": "MODIS_SP",
+      "checksum": "47d15751a13549b12e4db9c67852c10343edabd895e870c65ff74cd8d57d6afb",
+      "fetched_at": "2026-11-13T22:18:12Z",
+      "row_count": 28422,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-06",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "b5f21db74b26dbc789d5c2af4383d85f526af438fa0a4e8f1272259f1faeab55",
+      "fetched_at": "2026-11-13T22:22:31Z",
+      "row_count": 118501,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-07",
+      "source_code": "MODIS_SP",
+      "checksum": "3e10b38a51f4f1fe1e6a0a554f1414152f7424080c9612fbb10a34c796002ce8",
+      "fetched_at": "2026-11-13T22:18:17Z",
+      "row_count": 20174,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-07",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "0b926d86319a15601715b77ebe2d9a7d767529de0808adca8465fcd84dec0a59",
+      "fetched_at": "2026-11-13T22:22:48Z",
+      "row_count": 127852,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-08",
+      "source_code": "MODIS_SP",
+      "checksum": "c05e87139fdb940b4d10639dbfb59ce181699fe7e6a491518979c095bcdd6a2c",
+      "fetched_at": "2026-11-13T22:18:22Z",
+      "row_count": 29801,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-08",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "d04b7052cf6721eec9370bfc3004f1d59df2bdaecc4a1a976011a66b3d987fcb",
+      "fetched_at": "2026-11-13T22:23:04Z",
+      "row_count": 127522,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-09",
+      "source_code": "MODIS_SP",
+      "checksum": "7c90d0948b59cb0f8b31d7658d818f8d4e377f0b7f3e709c6eb2343d58e70ee9",
+      "fetched_at": "2026-11-13T22:18:28Z",
+      "row_count": 31807,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-09",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "4dbfece7c3af869849b7b3700eb7b97e538b35f5b1afc93917add884a37f78db",
+      "fetched_at": "2026-11-13T22:23:26Z",
+      "row_count": 141502,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-10",
+      "source_code": "MODIS_SP",
+      "checksum": "f4896ed321c05bba99fda32024b5bae03da6d34bf945c8b21a74d9939743c582",
+      "fetched_at": "2026-11-13T22:18:35Z",
+      "row_count": 32723,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-10",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "dc158683b2cb7e689a234d9927b2ca38173bb744c8019e000c4a579460b8974e",
+      "fetched_at": "2026-11-13T22:23:44Z",
+      "row_count": 159886,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-11",
+      "source_code": "MODIS_SP",
+      "checksum": "d210f1dfd2fb5330ea2715ea988a8eb791df3b727ce81ce5305380dac2c18b42",
+      "fetched_at": "2026-11-13T22:18:41Z",
+      "row_count": 24772,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-11",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "02aabae83a7b9a21cfed03006183fad48d807d069ddde5381240e35bf5977a28",
+      "fetched_at": "2026-11-13T22:24:01Z",
+      "row_count": 131149,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-12",
+      "source_code": "MODIS_SP",
+      "checksum": "c457813db79f8e37d86f60379782a4aa26a3bd8f7af5f174971c0b52e119d2b8",
+      "fetched_at": "2026-11-13T22:18:54Z",
+      "row_count": 31138,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-12",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "57ffb983369c8b2f85a776a7bbc64e482b7413ae43c9de8553956eafc9089e07",
+      "fetched_at": "2026-11-13T22:24:21Z",
+      "row_count": 160038,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-13",
+      "source_code": "MODIS_SP",
+      "checksum": "fc1c1b5a653548301a845907632c03a86778900a439c2bb2703688a50260e0c5",
+      "fetched_at": "2026-11-13T22:18:59Z",
+      "row_count": 30064,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-13",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "87f3e8d13886318ad5407b0aa2f2305bc3f6f09f83fbb8740bc29d3e060f3ac3",
+      "fetched_at": "2026-11-13T22:24:35Z",
+      "row_count": 128139,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-14",
+      "source_code": "MODIS_SP",
+      "checksum": "ffbdcf78042fdad26eca8eb96b18166ba977a5e23ec5033309d95b9d1228b2db",
+      "fetched_at": "2026-11-13T22:19:04Z",
+      "row_count": 23354,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-14",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "6ca11438bcebcef284677b52d7868c81a0928aeeff1b26e149a07a97a6752de8",
+      "fetched_at": "2026-11-13T22:24:49Z",
+      "row_count": 95399,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-15",
+      "source_code": "MODIS_SP",
+      "checksum": "ac87e9a2c1143db8848dff9c91a36bc314c0283a940412f207d7d39ff7c246a7",
+      "fetched_at": "2026-11-13T22:19:09Z",
+      "row_count": 21991,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-15",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "af6adb0d70b24f6606167c7099ca2217b1b4bb15dcda6b4ef7377f9f2469df8f",
+      "fetched_at": "2026-11-13T22:25:02Z",
+      "row_count": 106951,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-16",
+      "source_code": "MODIS_SP",
+      "checksum": "fbd989ddbdf3970e0d04e049f677a477ae9b32235b5c0a9be90209f39ae6b8e3",
+      "fetched_at": "2026-11-13T22:19:14Z",
+      "row_count": 28593,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-16",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "ab699a8e29b65f412e07cf45e6e77ea05313dca2c2eae056678ee34fc1a24fd5",
+      "fetched_at": "2026-11-13T22:25:32Z",
+      "row_count": 120938,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-17",
+      "source_code": "MODIS_SP",
+      "checksum": "d7c1fa3473f33cc6933c6e073a742d084d114d256b67771df80574bb140ce232",
+      "fetched_at": "2026-11-13T22:19:21Z",
+      "row_count": 24361,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-17",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "206c1f0a90766c7c8d4cb30ed28ea5ffaea8c1bc40af173a9c9bc4bf6b9ed46d",
+      "fetched_at": "2026-11-13T22:25:46Z",
+      "row_count": 124728,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-18",
+      "source_code": "MODIS_SP",
+      "checksum": "c418b09c757b4d05ee908691e9ebeafe89fb1cdf2bec6ae70429ac75c442d2f3",
+      "fetched_at": "2026-11-13T22:19:26Z",
+      "row_count": 26378,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-18",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "b285cf287164be8b52f5f6fa19a56826958a4d4f6d212cd90ee9f1b005d3e061",
+      "fetched_at": "2026-11-13T22:26:04Z",
+      "row_count": 111075,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-19",
+      "source_code": "MODIS_SP",
+      "checksum": "fea658a64aac914899de501ceff352810c819deca38ec23da436963319f973c6",
+      "fetched_at": "2026-11-13T22:19:31Z",
+      "row_count": 28040,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-19",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "c043ab7de83e26735eb30ead912c067705fba8cc63901e4940e09dafbe0c634d",
+      "fetched_at": "2026-11-13T22:26:34Z",
+      "row_count": 145448,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-20",
+      "source_code": "MODIS_SP",
+      "checksum": "51ca429863609c54d50c5c04bcecbed5da7b83273b06170e89b7c50948e7ae7d",
+      "fetched_at": "2026-11-13T22:19:36Z",
+      "row_count": 31201,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-20",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "2365ea97c94dc763c0f28b62a17f1e3ea07ddc7c1f797f97c700ea43f81b4534",
+      "fetched_at": "2026-11-13T22:26:56Z",
+      "row_count": 129011,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-21",
+      "source_code": "MODIS_SP",
+      "checksum": "3a3139f96574ec29114523283f19d5b8c2f87ffce3e47158c1f2fa8e69a5948d",
+      "fetched_at": "2026-11-13T22:19:52Z",
+      "row_count": 26494,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-21",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "8415ac6926910389728523f4cb864d8bdeca09840341ea72d4913c4dccba3aec",
+      "fetched_at": "2026-11-13T22:27:09Z",
+      "row_count": 112092,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-22",
+      "source_code": "MODIS_SP",
+      "checksum": "7951e3dcd832805829d1feddb23fdbb62e5309b940dbb4952c9afb1294837913",
+      "fetched_at": "2026-11-13T22:19:58Z",
+      "row_count": 23256,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-22",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "1b32455a1eafa5c2149a205e144b4a137601ff413ff712f36b6399c58cf56844",
+      "fetched_at": "2026-11-13T22:27:23Z",
+      "row_count": 116934,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-23",
+      "source_code": "MODIS_SP",
+      "checksum": "8914d476a4da46014508a4a86e30263ee84a8511abd321d0db3fedd4d501adfc",
+      "fetched_at": "2026-11-13T22:20:03Z",
+      "row_count": 27844,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-23",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "ef8d2cebd012e93c0f9b77b65afe489f93b51b0ee4539cf7323fc1b939061c10",
+      "fetched_at": "2026-11-13T22:27:34Z",
+      "row_count": 108159,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-24",
+      "source_code": "MODIS_SP",
+      "checksum": "5f9d875f186802d917d2fdde65dfa1345aa694fe8d9cf5ec3bb93c2503bea204",
+      "fetched_at": "2026-11-13T22:20:11Z",
+      "row_count": 19990,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-24",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "600969bc4985def14eca2438166e2408fe473a9190e4564450e18b5f092188bf",
+      "fetched_at": "2026-11-13T22:28:00Z",
+      "row_count": 96155,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-25",
+      "source_code": "MODIS_SP",
+      "checksum": "e2017424619e62f52d84e36bc2ebc7d2f91933d7f3b0190c2c5871e3e7ab13c2",
+      "fetched_at": "2026-11-13T22:20:17Z",
+      "row_count": 17016,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-25",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "2ab20371220769a645d4cbeacac75d5f73c834335396bd9e08bd1ac5c15f0520",
+      "fetched_at": "2026-11-13T22:28:10Z",
+      "row_count": 74590,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-26",
+      "source_code": "MODIS_SP",
+      "checksum": "ed9a8736636bec8f43369da5d35e59c038c4477ead9e4aa38dbfa96dc0a65f42",
+      "fetched_at": "2026-11-13T22:20:31Z",
+      "row_count": 23920,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-26",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "2a1940bd8428eb6af0f55a263bcd51549a97eead8352f621a1ee19d704144b63",
+      "fetched_at": "2026-11-13T22:28:27Z",
+      "row_count": 109083,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-27",
+      "source_code": "MODIS_SP",
+      "checksum": "178b9a517fc74c748d59e062c2780a8a6aba57a0d5784989fbec3e590de63d74",
+      "fetched_at": "2026-11-13T22:20:36Z",
+      "row_count": 24906,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-27",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "3005b6f914b9ffa456bda3865c4c1b62e93ea8958751b466e6578890e2396925",
+      "fetched_at": "2026-11-13T22:28:40Z",
+      "row_count": 130037,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-28",
+      "source_code": "MODIS_SP",
+      "checksum": "86ae83c5c748eaa119f72dbeb66bff2141fc6d23d77d63b0b7018e5c1a924dac",
+      "fetched_at": "2026-11-13T22:20:46Z",
+      "row_count": 24024,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-28",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "74c99beea2478acbfd920c1da452b8bedf93fc1e90a992a8168fb9aefdc5acfb",
+      "fetched_at": "2026-11-13T22:28:56Z",
+      "row_count": 108273,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-29",
+      "source_code": "MODIS_SP",
+      "checksum": "c27b1d3158a87bd9cdb3f17b83a266fc33cc00de7ba35a9f9b2ee5473d388bc3",
+      "fetched_at": "2026-11-13T22:20:53Z",
+      "row_count": 20705,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-29",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "4795eebdd2d2794c8e84681fa1eef0eb2a16842d4322f9e202da5b737fd08cf6",
+      "fetched_at": "2026-11-13T22:29:10Z",
+      "row_count": 97145,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-30",
+      "source_code": "MODIS_SP",
+      "checksum": "301778954bc9ff98ef7374b613c5e02dce7ef285ae636a92602945a7c487b292",
+      "fetched_at": "2026-11-13T22:21:00Z",
+      "row_count": 22263,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-30",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "4f5b91cec7bc663d31d383f8490d2d93584e80d9f551911483bbf1fa2c18900d",
+      "fetched_at": "2026-11-13T22:29:20Z",
+      "row_count": 86093,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-31",
+      "source_code": "MODIS_SP",
+      "checksum": "fd2d7dbbee755e3350ed716e4407a02fd7788683c44b137594d8a1f09b9abd6d",
+      "fetched_at": "2026-11-13T22:21:05Z",
+      "row_count": 18783,
+      "last_error": null
+    },
+    {
+      "day": "2024-08-31",
+      "source_code": "VIIRS_NOAA20_SP",
+      "checksum": "cbdc528ea79ad46bbbd81e50acc105152c3f0d1a9dc54f3fce86ca74786bb9d7",
+      "fetched_at": "2026-11-13T22:29:31Z",
+      "row_count": 82532,
+      "last_error": null
+    }
+  ],
+  "limitations": [
+    "MODIS is a comparison reference, not ground truth.",
+    "Calibrated values are an index and need not be integer observed cell counts.",
+    "A short chronological holdout cannot establish worldwide or cross-season validity.",
+    "Shared degree grids do not remove different sensor sensitivities or observation schedules.",
+    "Neither observed cells nor this index measure burned area or distinct fires.",
+    "No automatic substitution of the observed or global series is performed."
+  ]
+}

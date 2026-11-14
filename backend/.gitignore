@@ -1,9 +1,14 @@
+venv/
 .venv/
 __pycache__/
-*.py[cod]
-db.sqlite3
-db.sqlite3-*
+.pytest_cache/
 .env
-.env.*
-!.env.example
 .DS_Store
+
+# быстрый индекс календаря — пересобирается сам
+cache/
+*.sqlite3
+*.sqlite3-*
+
+# старые версии файлов (сохранены локально, в git не нужны)
+_old/
