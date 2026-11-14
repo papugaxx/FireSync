@@ -5,9 +5,10 @@ import type {
   CalendarResponse,
   HotspotsResponse,
   MetaResponse,
+  MonthlyResponse,
   MonthResponse,
 } from "@/types/api";
-import { mockCalendar, mockHotspots, mockMeta, mockMonth } from "./mock";
+import { mockCalendar, mockHotspots, mockMeta, mockMonth, mockMonthly } from "./mock";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -31,6 +32,9 @@ export const api = {
     get<MonthResponse>(`/api/month/?region=${region}&year=${year}&month=${month}`, () =>
       mockMonth(region, year, month),
     ),
+
+  monthly: (region: string, year: number) =>
+    get<MonthlyResponse>(`/api/monthly/?region=${region}&year=${year}`, () => mockMonthly(region, year)),
 
   hotspots: (region: string, year: number, month: number) =>
     get<HotspotsResponse>(`/api/hotspots/?region=${region}&year=${year}&month=${month}`, () =>

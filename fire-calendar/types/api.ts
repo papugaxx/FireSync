@@ -64,3 +64,10 @@ export interface HotspotsResponse {
   to: string;
   hotspots: Hotspot[];
 }
+
+/** График "активность по месяцам": обе линии в одной шкале (VIIRS уже гармонизирован). */
+export interface MonthlyResponse {
+  region: string;
+  year: number;
+  months: { month: number; modis: number | null; viirs: number | null }[];
+}

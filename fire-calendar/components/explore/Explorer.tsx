@@ -3,23 +3,26 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { api, downloadCsv } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
-import { REGIONS } from "@/lib/mock";
+import { REGIONS, YEARS } from "@/lib/mock";
 import { MONTHS } from "@/lib/colors";
-import RampLegend from "./RampLegend";
-import SensorLegend from "./SensorLegend";
-import { Button, Card, Field, Placeholder, Select, Stat } from "@/components/ui";
+import { Button, Card, Field, Panel, Placeholder, Select, Toggle } from "@/components/ui";
+import DayCalendar from "./DayCalendar";
+import ActivityChart from "./ActivityChart";
 import YearCalendar from "./YearCalendar";
-import MonthlyChart from "./MonthlyChart";
-import DayStrip from "./DayStrip";
+import RampLegend from "./RampLegend";
 
 const FireMap = dynamic(() => import("./FireMap"), {
   ssr: false,
-  loading: () => <Placeholder className="h-full" label="Loading map…" />,
+  loading: () => <div className="h-full w-full animate-pulse bg-[#0b2238]" />,
 });
 
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
 export default function Explorer() {
-  const [regionId, setRegionId] = useState(REGIONS[0].id);
+  const [regionId, setRegionId] = useState("world");
   const [sel, setSel] = useState({ year: 2024, month: 8 });
+  const [day, setDay] = useState<string | null>(null); // выбранный день в календаре или весь месяц
+  const [show, setShow] = useState({ modis: true, viirs: true });
   const [mode, setMode] = useState<"count" | "anomaly">("count");
 
   const region = REGIONS.find((r) => r.id === regionId)!;
@@ -28,160 +31,182 @@ export default function Explorer() {
   const cal = useApi(regionId, () => api.calendar(regionId));
   const mon = useApi(monthKey, () => api.month(regionId, sel.year, sel.month));
   const hs = useApi(monthKey, () => api.hotspots(regionId, sel.year, sel.month));
+  const yr = useApi(`${regionId}-${sel.year}`, () => api.monthly(regionId, sel.year));
+  const error = cal.error ?? mon.error ?? hs.error ?? yr.error ?? null;
 
-  const calendar = cal.data ?? null;
-  const month = mon.data ?? null;
-  const hotspots = hs.data ?? null;
-  const error = cal.error ?? mon.error ?? hs.error ?? null;
+  // точки на карте: за весь месяц или за выбранный день
+  const points = useMemo(() => {
+    const all = hs.data?.hotspots ?? [];
+    return day ? all.filter((h) => h.date === day) : all;
+  }, [hs.data, day]);
 
-  const stats = useMemo(() => {
-    if (!calendar) return null;
-    const yearRow = calendar.years.find((y) => y.year === sel.year);
-    const value = yearRow?.months[sel.month - 1] ?? null;
-    const med = calendar.median[sel.month - 1];
-    const totals = calendar.years.map((y) => ({ year: y.year, sum: y.months.reduce<number>((a, v) => a + (v ?? 0), 0) }));
-    const topYear = totals.reduce((a, b) => (b.sum > a.sum ? b : a));
-    const peakMonth = calendar.median.indexOf(Math.max(...calendar.median));
-    return {
-      value,
-      med,
-      diff: value !== null && med ? Math.round((value / med - 1) * 100) : null,
-      topYear,
-      peakMonth,
-      yearValues: yearRow?.months ?? [],
-    };
-  }, [calendar, sel]);
+  function pick(next: Partial<typeof sel>) {
+    setSel({ ...sel, ...next });
+    setDay(null);
+  }
 
   function exportCsv() {
-    if (!hotspots) return;
+    const tag = day ?? `${sel.year}-${String(sel.month).padStart(2, "0")}`;
     downloadCsv(
-      `firesync_${regionId}_${sel.year}-${String(sel.month).padStart(2, "0")}.csv`,
-      hotspots.hotspots.map((h) => ({ date: h.date, lat: h.lat.toFixed(4), lon: h.lon.toFixed(4), sensor: h.seenBy, frp: h.frp })),
+      `${regionId}_${tag}_hotspots.csv`,
+      points.map((h) => ({ date: h.date, latitude: h.lat.toFixed(4), longitude: h.lon.toFixed(4), sensor: h.seenBy, frp: h.frp })),
     );
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8">
-      {/* Панель управления */}
-      <div className="mb-6 flex flex-wrap items-end gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold">Burning activity calendar</h1>
-          <p className="text-sm">Harmonized MODIS + VIIRS active fire cells · sample data</p>
+    <div className="pb-16">
+      {/* ===== Карта с плавающими панелями ===== */}
+      <section className="relative lg:h-[calc(100vh-5rem)] lg:min-h-[720px]">
+        <div className="h-[60vh] lg:absolute lg:inset-0 lg:h-auto">
+          <FireMap region={region} hotspots={points} />
         </div>
-        <div className="ml-auto flex flex-wrap items-end gap-3">
-          <Field label="Region">
-            <Select value={regionId} onChange={(e) => setRegionId(e.target.value)}>
-              {REGIONS.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Year">
-            <Select value={sel.year} onChange={(e) => setSel({ ...sel, year: +e.target.value })}>
-              {calendar?.years.map((y) => <option key={y.year}>{y.year}</option>) ?? <option>{sel.year}</option>}
-            </Select>
-          </Field>
-          <Field label="Month">
-            <Select value={sel.month} onChange={(e) => setSel({ ...sel, month: +e.target.value })}>
-              {MONTHS.map((m, i) => (
-                <option key={m} value={i + 1}>
-                  {m}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Button onClick={exportCsv} disabled={!hotspots}>
-            Download CSV
-          </Button>
+
+        {/* Фильтры: Region / Year / Month */}
+        <div className="px-4 pt-4 lg:pointer-events-none lg:absolute lg:inset-x-0 lg:top-5 lg:z-[1100] lg:flex lg:justify-center lg:pl-[440px] lg:pr-6 lg:pt-0">
+          <Panel className="pointer-events-auto flex flex-wrap gap-3 p-2.5">
+            <Field label="Region">
+              <Select value={regionId} onChange={(e) => (setRegionId(e.target.value), setDay(null))}>
+                {REGIONS.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Year">
+              <Select value={sel.year} onChange={(e) => pick({ year: +e.target.value })}>
+                {YEARS.map((y) => (
+                  <option key={y}>{y}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Month">
+              <Select value={sel.month} onChange={(e) => pick({ month: +e.target.value })}>
+                {MONTH_NAMES.map((m, i) => (
+                  <option key={m} value={i + 1}>
+                    {m}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </Panel>
         </div>
-      </div>
+
+        {/* Левая панель: Burning activity */}
+        <div className="px-4 pt-4 lg:absolute lg:bottom-24 lg:left-0 lg:top-5 lg:z-[1100] lg:w-[410px] lg:p-0">
+          <Panel className="flex h-full flex-col p-6 lg:rounded-l-none lg:border-l-0">
+            <h2 className="mb-6 text-center font-display text-2xl">Burning activity</h2>
+            <p className="-mt-4 mb-5 text-center text-sm text-muted">
+              {MONTH_NAMES[sel.month - 1]} {sel.year} · {region.name}
+            </p>
+
+            {mon.data ? <DayCalendar days={mon.data.days} selected={day} onSelect={setDay} /> : <Placeholder className="h-64" />}
+
+            <div className="mt-6 space-y-2 text-sm text-muted">
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <LegendChip className="bg-accent" label="High activity" />
+                <LegendChip className="bg-accent-2" label="Fires detected" />
+                <LegendChip className="border border-line" label="No fires" />
+              </div>
+              <p>
+                {hs.data ? `${points.length} hotspots on the map` : "Loading hotspots…"}
+                {day ? ` · ${day}` : " · whole month"}
+              </p>
+              {day ? (
+                <button onClick={() => setDay(null)} className="text-accent underline">
+                  Show whole month
+                </button>
+              ) : (
+                <p>Click a day to show it on the map.</p>
+              )}
+            </div>
+
+            <div className="mt-auto flex justify-center pt-6">
+              <Button onClick={exportCsv} disabled={!hs.data} className="inline-flex items-center gap-2">
+                <FileIcon /> CSV File
+              </Button>
+            </div>
+          </Panel>
+        </div>
+      </section>
 
       {error && (
-        <div role="alert" className="mb-4 border p-3 text-sm">
+        <div role="alert" className="mx-auto mt-6 max-w-5xl rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-300">
           Could not load data: {error}
         </div>
       )}
 
-      {/* Ключевые цифры */}
-      <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label={`${MONTHS[sel.month - 1]} ${sel.year}`} value={stats?.value ?? "—"} hint="active fire cells" />
-        <Stat
-          label="vs historical median"
-          value={stats?.diff == null ? "—" : `${stats.diff > 0 ? "+" : ""}${stats.diff}%`}
-          hint={`median ${stats?.med ?? "—"}`}
-        />
-        <Stat label="Peak fire season" value={stats ? MONTHS[stats.peakMonth] : "—"} hint="highest median month" />
-        <Stat label="Most active year" value={stats?.topYear.year ?? "—"} hint={stats ? `${stats.topYear.sum} cells total` : ""} />
-      </div>
-
-      {/* Карта + дни месяца */}
-      <div className="mb-6 grid gap-6 lg:grid-cols-3">
-        <Card className="h-[420px] lg:col-span-2">
-          <FireMap region={region} hotspots={hotspots?.hotspots ?? []} />
-        </Card>
-        <Card title={`${MONTHS[sel.month - 1]} ${sel.year} by day`}>
-          {month ? <DayStrip days={month.days} /> : <Placeholder className="h-64" />}
-          <div className="mt-4 text-sm">
-            <SensorLegend />
-            <p className="mt-2">{hotspots ? `${hotspots.hotspots.length} hotspots on the map` : "Loading hotspots…"}</p>
-          </div>
-        </Card>
-      </div>
-
-      {/* Календарь лет + график */}
-      <div className="grid gap-6 lg:grid-cols-5">
+      {/* ===== График по месяцам ===== */}
+      <div className="mx-auto mt-10 max-w-6xl px-4">
         <Card
-          className="lg:col-span-3"
-          title="Year × month calendar"
+          title="Monthly activity over the year"
           action={
-            <div className="flex gap-1">
-              {(["count", "anomaly"] as const).map((m) => (
-                <Button key={m} onClick={() => setMode(m)} aria-pressed={mode === m} className={mode === m ? "font-semibold" : ""}>
-                  {m === "count" ? "Activity" : "Anomaly"}
-                </Button>
-              ))}
+            <div className="flex gap-4">
+              <Toggle active={show.modis} color="#f39314" onClick={() => setShow({ ...show, modis: !show.modis })}>
+                MODIS
+              </Toggle>
+              <Toggle active={show.viirs} color="#ffd60a" onClick={() => setShow({ ...show, viirs: !show.viirs })}>
+                VIIRS
+              </Toggle>
             </div>
           }
         >
-          {calendar ? (
+          {yr.data ? (
+            <ActivityChart data={yr.data} show={show} selectedMonth={sel.month} onSelectMonth={(m) => pick({ month: m })} />
+          ) : (
+            <Placeholder className="h-72" />
+          )}
+          {yr.data && sel.year < 2012 && <p className="mt-2 text-sm text-muted">VIIRS data starts in 2012.</p>}
+        </Card>
+      </div>
+
+      {/* ===== Календарь лет (в макете пока нет, но это главное по заданию) ===== */}
+      <div className="mx-auto mt-8 max-w-6xl px-4">
+        <Card
+          title="Burning calendar 2001–2025"
+          action={
+            <div className="flex gap-3">
+              <Toggle active={mode === "count"} color="#17b6d9" onClick={() => setMode("count")}>
+                Activity
+              </Toggle>
+              <Toggle active={mode === "anomaly"} color="#17b6d9" onClick={() => setMode("anomaly")}>
+                Anomaly
+              </Toggle>
+            </div>
+          }
+        >
+          {cal.data ? (
             <>
-              <YearCalendar data={calendar} mode={mode} selected={sel} onSelect={(year, month) => setSel({ year, month })} />
+              <YearCalendar data={cal.data} mode={mode} selected={sel} onSelect={(year, month) => pick({ year, month })} />
               <RampLegend mode={mode} />
             </>
           ) : (
             <Placeholder className="h-96" />
           )}
+          <p className="mt-3 text-sm text-muted">
+            Click a cell to open that month. {MONTHS[sel.month - 1]} {sel.year} is selected.
+          </p>
         </Card>
-        <div className="space-y-6 lg:col-span-2">
-          <Card title={`${sel.year} vs median`}>
-            {stats ? (
-              <MonthlyChart year={sel.year} values={stats.yearValues} median={calendar!.median} selectedMonth={sel.month} />
-            ) : (
-              <Placeholder className="h-52" />
-            )}
-          </Card>
-          <Card title="Harmonization">
-            {calendar ? (
-              <dl className="grid grid-cols-2 gap-y-2 text-sm">
-                <dt>Method</dt>
-                <dd>{calendar.harmonization.method}</dd>
-                <dt>Validation R²</dt>
-                <dd>{calendar.harmonization.r2}</dd>
-                <dt>Status</dt>
-                <dd>
-                  {calendar.harmonization.status}
-                </dd>
-                <dt>Grid</dt>
-                <dd>0.1° cells, daily</dd>
-              </dl>
-            ) : (
-              <Placeholder className="h-24" />
-            )}
-          </Card>
-        </div>
       </div>
     </div>
+  );
+}
+
+function LegendChip({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`h-3 w-3 rounded-sm ${className}`} />
+      {label}
+    </span>
+  );
+}
+
+function FileIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7" />
+      <path d="M14 3v5h5M19 8v5" />
+      <path d="M18 15v6m-3-3 3 3 3-3" />
+    </svg>
   );
 }
