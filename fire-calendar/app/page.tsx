@@ -7,6 +7,22 @@ const cardsTheProblem = [
   { title: "2–3×", text: "more VIIRS detections for the same fire" },
 ];
 
+const cardsHowItWorks = [
+  { title: "1. Collect", text: "Hotspots from NASA FIRMS, industrial sources filtered out." },
+  { title: "2. Grid", text: "Both sensors on one 0.1° grid, counted as active cells." },
+  { title: "3. Harmonize", text: "VIIRS fitted to the MODIS scale and validated." },
+  { title: "4. Calendar", text: "One series from 2000 to today with anomalies." },
+];
+
+const cardsFeatures = [
+  { title: "Burning calendar", text: "Year × month heatmap." },
+  { title: "Anomaly view", text: "Each month vs its historical median." },
+  { title: "Area of interest", text: "Region, bounding box or drawing on the map." },
+  { title: "Hotspot map", text: "Active cells colored by sensor." },
+  { title: "CSV export", text: "Download data behind any view." },
+  { title: "Accessible colors", text: "Color-blind friendly ramps." },
+];
+
 export default function Home() {
   return (
     <>
@@ -24,6 +40,7 @@ export default function Home() {
         </div>
         <Placeholder className="h-64" label="Hero image / calendar preview" />
       </section>
+
 
       <Section id="problem" title="The problem">
         <p className="mb-6 max-w-2xl">

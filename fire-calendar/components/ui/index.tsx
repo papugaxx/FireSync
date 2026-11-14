@@ -15,14 +15,22 @@ export function Panel({ className = "", children }: { className?: string; childr
   return <div className={`rounded-3xl border border-line bg-surface ${className}`}>{children}</div>;
 }
 
+import Image from "next/image";
+
 export function Card({
   title,
   action,
+  video,
+  img,
+  imgAlt = "",
   className = "",
   children,
 }: {
   title?: string;
   action?: React.ReactNode;
+  video?: string;   // путь к видео, например "/videos/collect.mp4"
+  img?: string;     // путь к картинке, например "/images/grid.png"
+  imgAlt?: string;  // описание картинки для доступности
   className?: string;
   children: React.ReactNode;
 }) {
@@ -32,10 +40,26 @@ export function Card({
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           {title && <h3 className="font-display text-lg md:text-xl">{title}</h3>}
           {action}
-          
         </div>
       )}
       {children}
+
+      {video && (
+        <video
+          src={video}
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="mt-4 aspect-video w-full rounded-2xl border border-line object-cover"
+        />
+      )}
+
+      {img && (
+        <div className="relative mt-4 aspect-video w-full overflow-hidden rounded-2xl border border-line">
+          <Image src={img} alt={imgAlt} fill sizes="(max-width: 768px) 100vw, 33vw" className="object-cover" />
+        </div>
+      )}
     </Panel>
   );
 }
