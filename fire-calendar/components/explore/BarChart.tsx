@@ -1,6 +1,6 @@
 "use client";
-// Универсальный столбчатый график в стиле макета (оси и пунктир синие).
-// Используется в окнах Surface, FRP и Trend & Anomaly.
+// Generic bar chart in the style of the mockup (blue axes and dashed lines).
+// Used in the Surface, FRP and Trend & Anomaly windows.
 
 const C = { grid: "#2a5bd7", accent: "#17b6d9" };
 
@@ -8,15 +8,15 @@ export interface BarChartProps {
   labels: (string | number)[];
   values: (number | null)[];
   color: string;
-  /** необязательная вторая серия точками (например максимум FRP) */
+  /** optional second series drawn as dots (e.g. maximum FRP) */
   dots?: (number | null)[];
   dotColor?: string;
-  /** необязательная прямая (линия тренда): значения в начале и в конце */
+  /** optional straight line (trend line): values at the start and at the end */
   trend?: [number, number];
-  selected?: number; // индекс
+  selected?: number; // index
   onSelect?: (i: number) => void;
   format?: (v: number) => string;
-  /** показывать подпись каждой n-й метки (для 25 лет удобно 4) */
+  /** show the label of every n-th tick (4 works well for 25 years) */
   labelEvery?: number;
 }
 
@@ -94,7 +94,7 @@ export default function BarChart({
   );
 }
 
-/** Линейная регрессия: значения прямой тренда в первой и последней точке. */
+/** Linear regression: values of the trend line at the first and last points. */
 export function linearTrend(values: number[]): [number, number] {
   const n = values.length;
   const mx = (n - 1) / 2;

@@ -1,15 +1,17 @@
 """
-main.py — API FireSync
+main.py — FireSync API
 
-Запуск:        uvicorn main:app --reload
-Документация:  http://localhost:8000/docs   (любой запрос можно попробовать кнопками)
+Run:            `uvicorn main:app --reload`
 
-Кто за что отвечает:
-  main.py        — адреса API: принимают параметры, проверяют, отдают JSON
-  grid_index.py  — быстрый индекс календаря (доли секунды вместо ~25 секунд)
-  db.py          — точки пожаров и эталонный расчёт прямо из базы напарника
-  analytics.py   — математика: раскраска, гармонизация MODIS/VIIRS, аномалии
-  config.py      — настройки
+Interactive documentation: <http://localhost:8000/docs> (every request can be tried with the buttons).
+
+Who is responsible for what:
+
+* `main.py` — API endpoints: accept parameters, validate them, return JSON
+* `grid_index.py` — fast calendar index (a fraction of a second instead of ~25 seconds)
+* `db.py` — fire points and the reference calculation straight from the partner's database
+* `analytics.py` — math: coloring, MODIS/VIIRS harmonization, anomalies
+* `config.py` — settings
 """
 
 import csv
@@ -25,7 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 
-import config  # первым: подключает папку data_pipeline с модулем напарника
+import config  # first: adds the data_pipeline folder with the partner's module
 import analytics
 import db
 import grid_index
@@ -57,7 +59,8 @@ TAGS = [
 
 @asynccontextmanager
 async def lifespan(app):
-    # Фоновый поток: сам замечает новые загрузки из NASA и обновляет индекс
+    """Application startup/shutdown: starts the background thread that refreshes the index."""
+    # Background thread: notices new NASA downloads on its own and refreshes the index
     grid_index.start_auto_refresh(config.AUTO_REFRESH_SECONDS)
     yield
 
@@ -65,21 +68,21 @@ async def lifespan(app):
 app = FastAPI(title="FireSync API", version="1.0.0", description=DESCRIPTION,
               openapi_tags=TAGS, lifespan=lifespan)
 
-app.add_middleware(GZipMiddleware, minimum_size=1000)   # большие ответы сжимаются в 5–10 раз
+app.add_middleware(GZipMiddleware, minimum_size=1000)   # large responses are compressed 5–10 times
 app.add_middleware(CORSMiddleware, allow_origins=config.FRONTEND_URLS, allow_methods=["GET"],
                    allow_headers=["*"], expose_headers=["X-Process-Time-Ms", "Content-Disposition", "X-Total-Rows"])
 
 
 @app.middleware("http")
 async def process_time(request: Request, call_next):
-    """В каждый ответ дописываем, сколько миллисекунд он считался."""
+    """Add to every response how many milliseconds it took to compute."""
     started = time.perf_counter()
     response = await call_next(request)
     response.headers["X-Process-Time-Ms"] = f"{(time.perf_counter() - started) * 1000:.1f}"
     return response
 
 
-# ---------- Ошибки всегда в одном формате: {"error": "текст"} ----------
+# ---------- Errors always use one format: {"error": "text"} ----------
 
 def _error(status, message, **extra):
     return JSONResponse(status_code=status, content={"error": message, **extra})
@@ -87,11 +90,13 @@ def _error(status, message, **extra):
 
 @app.exception_handler(ValueError)
 async def bad_request(request: Request, exc: ValueError):
+    """ValueError (a violated business rule, such as reversed dates) → HTTP 400."""
     return _error(400, str(exc))
 
 
 @app.exception_handler(RequestValidationError)
 async def invalid_params(request: Request, exc: RequestValidationError):
+    """Malformed parameter (not a date, out of range) → HTTP 422 with a `details` list of `{param, message}`."""
     details = [{"param": str(err["loc"][-1]), "message": err["msg"]} for err in exc.errors()]
     text = "; ".join(f"{d['param']}: {d['message']}" for d in details)
     return _error(422, f"Неверные параметры запроса — {text}", details=details)
@@ -99,6 +104,7 @@ async def invalid_params(request: Request, exc: RequestValidationError):
 
 @app.exception_handler(grid_index.IndexNotReady)
 async def index_not_ready(request: Request, exc: grid_index.IndexNotReady):
+    """The index is still being built → HTTP 503 with `Retry-After: 30`."""
     response = _error(503, str(exc))
     response.headers["Retry-After"] = "30"
     return response
@@ -106,18 +112,20 @@ async def index_not_ready(request: Request, exc: grid_index.IndexNotReady):
 
 @app.exception_handler(StorageError)
 async def storage_error(request: Request, exc: StorageError):
+    """The pipeline database is missing or unreadable → HTTP 503."""
     return _error(503, f"База данных недоступна: {exc}")
 
 
 @app.exception_handler(PipelineError)
 async def pipeline_error(request: Request, exc: PipelineError):
+    """Any other pipeline failure → HTTP 500."""
     return _error(500, str(exc))
 
 
-# ---------- Общие параметры запросов ----------
+# ---------- Common request parameters ----------
 
 class Period:
-    """Период: date_from и date_to включительно, в UTC."""
+    """Period: date_from and date_to inclusive, in UTC."""
 
     def __init__(
         self,
@@ -134,13 +142,14 @@ class Period:
         self.days = (date_to - date_from).days + 1
 
     def limit(self, max_days):
+        """Reject the period if it is longer than `max_days` (raises ValueError → HTTP 400). Returns self."""
         if self.days > max_days:
             raise ValueError(f"Слишком длинный период: {self.days} дн. Для этого запроса максимум {max_days}.")
         return self
 
 
 class Area:
-    """Область: готовый регион ИЛИ четыре границы. Ничего не задано — весь мир."""
+    """Area: a ready-made region OR four boundaries. Nothing given — the whole world."""
 
     def __init__(
         self,
@@ -176,20 +185,26 @@ def _area_info(area, computed_bbox):
             "requested_bbox": list(area.bbox) if area.bbox else None, "bbox": computed_bbox}
 
 
-# ---------- Система ----------
+# ---------- System ----------
 
 @app.get("/", include_in_schema=False)
 def root():
+    """Redirect to the interactive documentation at `/docs`."""
     return RedirectResponse("/docs")
 
 
 @app.get("/health", tags=["Система"], summary="Сервер жив?")
 def health():
+    """Liveness check: returns `{"status": "ok"}` if the server is running. Does not touch the databases."""
     return {"status": "ok"}
 
 
 @app.get("/status", tags=["Система"], summary="Какие данные загружены и насколько они свежие")
 def status():
+    """
+    What data is loaded (first/last day and day count per series), whether the fast index is ready,
+    the state of the background refresh, and whether the pipeline database was found.
+    """
     ready = grid_index.is_ready()
     summary = grid_index.loaded_summary() if ready else None
     return {
@@ -205,15 +220,16 @@ def status():
     }
 
 
-# ---------- Регионы ----------
+# ---------- Regions ----------
 
 @app.get("/regions", tags=["Регионы"], summary="Готовые регионы для демо")
 def regions():
+    """The ready-made regions from `config.REGIONS`: id, name, bbox `[west, south, east, north]`, scope."""
     return [{"id": key, "name": info["name"], "bbox": info["bbox"], "scope": info["scope"]}
             for key, info in config.REGIONS.items()]
 
 
-# ---------- Календарь ----------
+# ---------- Calendar ----------
 
 @app.get("/calendar", tags=["Календарь"], summary="Активность по дням: MODIS и VIIRS")
 def calendar(
@@ -225,8 +241,8 @@ def calendar(
     include_windows: Annotated[bool, Query(description="Добавить список исходных срезов NASA")] = False,
 ):
     """
-    Для каждого дня: сколько клеток 0.1° было активно по MODIS (Terra+Aqua)
-    и по VIIRS NOAA-20, сколько клеток видели оба, и уровень 0–4 для раскраски.
+    For each day: how many 0.1° cells were active according to MODIS (Terra+Aqua)
+    and VIIRS NOAA-20, how many cells both saw, and a level 0–4 for coloring.
     """
     if engine == "reference":
         period.limit(config.MAX_REFERENCE_DAYS)
@@ -244,8 +260,8 @@ def calendar(
 @app.get("/calendar/monthly", tags=["Календарь"], summary="Активность по месяцам (для календаря год × месяц)")
 def calendar_monthly(period: Annotated[Period, Depends()], area: Annotated[Area, Depends()]):
     """
-    Для каждого месяца: сумма активных клеток по дням («ячейко-дни») и полнота данных:
-    `complete` — загружены все дни, `partial` — часть, `missing` — ничего.
+    For each month: the sum of active cells over the days ("cell-days") and data completeness:
+    `complete` — all days loaded, `partial` — some of them, `missing` — none.
     """
     period.limit(40 * 366)
     result = grid_index.monthly(area.scope_id, period.start, period.end, area.bbox)
@@ -253,7 +269,7 @@ def calendar_monthly(period: Annotated[Period, Depends()], area: Annotated[Area,
     return analytics.add_monthly_levels(result)
 
 
-# ---------- Карта ----------
+# ---------- Map ----------
 
 RESOLUTIONS = (0.1, 0.2, 0.5, 1.0, 2.0, 5.0)
 
@@ -272,8 +288,8 @@ def cells(
         description="Размер клетки в градусах: 0.1, 0.2, 0.5, 1, 2 или 5. Не задан — подберётся сам")] = None,
 ):
     """
-    Точки в центрах клеток с числом активных дней — готовый слой для MapLibre/Leaflet
-    (например heatmap). Самые активные клетки идут первыми.
+    Points at cell centers with the number of active days — a ready-made layer for MapLibre/Leaflet
+    (e.g. a heatmap). The most active cells come first.
     """
     period.limit(config.MAX_CALENDAR_DAYS)
     resolution = resolution or _auto_resolution(area.bbox)
@@ -310,7 +326,7 @@ def points(
     offset: Annotated[int, Query(ge=0, description="Сколько точек пропустить (следующая страница)")] = 0,
     format: Annotated[Literal["json", "geojson"], Query(description="json — список, geojson — слой карты")] = "json",
 ):
-    """Точки как их прислала NASA: время, координаты, спутник, мощность (FRP). Отдаются страницами."""
+    """Points as NASA sent them: time, coordinates, satellite, power (FRP). Returned in pages."""
     period.limit(config.MAX_POINT_DAYS)
     rows = db.get_points(area.scope_id, period.start, period.end, area.bbox, sensor, limit, offset)
     page = {"limit": limit, "offset": offset, "count": len(rows), "has_more": len(rows) == limit,
@@ -322,7 +338,7 @@ def points(
     return {**page, "points": rows}
 
 
-# ---------- Наука ----------
+# ---------- Science ----------
 
 @app.get("/harmonization", tags=["Наука"], summary="Сведение MODIS и VIIRS в единый ряд")
 def harmonization(
@@ -333,9 +349,9 @@ def harmonization(
                     "Не задан — последняя треть периода")] = None,
 ):
     """
-    Главная задача челленджа. Подбираем коэффициент k (MODIS ≈ k × VIIRS) на одной части
-    дней и честно проверяем его на других днях, которые модель не видела.
-    В `series` — единый ряд, где неважно, какой спутник дал данные.
+    The main task of the challenge. We fit a coefficient k (MODIS ≈ k × VIIRS) on one part of the
+    days and honestly check it on other days that the model has not seen.
+    `series` is a single series where it does not matter which satellite supplied the data.
     """
     period.limit(config.MAX_CALENDAR_DAYS)
     split = split_date or analytics.default_split(period.start, period.end)
@@ -357,8 +373,8 @@ def anomaly(
         description="По какому прибору сравнивать (у MODIS самая длинная история)")] = "modis",
 ):
     """
-    Сравнивает выбранный месяц с медианой этого же месяца в другие годы:
-    на сколько процентов больше или меньше нормы и какое место среди всех лет.
+    Compares the chosen month with the median of the same month in other years:
+    by how many percent it is above or below normal and what rank it has among all years.
     """
     loaded = grid_index.loaded_summary()["scopes"].get(area.scope_id)
     if not loaded:
@@ -372,7 +388,7 @@ def anomaly(
     return result
 
 
-# ---------- Выгрузка ----------
+# ---------- Export ----------
 
 @app.get("/export.csv", tags=["Выгрузка"], summary="Скачать точки пожаров в CSV (до 31 дня)")
 def export_csv(
@@ -380,7 +396,7 @@ def export_csv(
     area: Annotated[Area, Depends()],
     sensor: Annotated[Literal["MODIS", "VIIRS"] | None, Query(description="Только один прибор")] = None,
 ):
-    """Файл отдаётся потоком: скачивание начинается сразу, сервер не держит его в памяти."""
+    """The file is streamed: the download starts immediately, the server does not hold it in memory."""
     period.limit(config.MAX_EXPORT_DAYS)
     total = db.count_points(area.scope_id, period.start, period.end, area.bbox, sensor,
                             cap=config.MAX_EXPORT_ROWS)
@@ -395,7 +411,7 @@ def export_csv(
         for row in db.stream_points(area.scope_id, period.start, period.end, area.bbox, sensor,
                                     cap=config.MAX_EXPORT_ROWS):
             writer.writerow(row)
-            if buffer.tell() > 64_000:      # отдаём кусками примерно по 64 КБ
+            if buffer.tell() > 64_000:      # send in chunks of roughly 64 KB
                 yield buffer.getvalue()
                 buffer.seek(0)
                 buffer.truncate()

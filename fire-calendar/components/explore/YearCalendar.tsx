@@ -9,7 +9,7 @@ interface Props {
   onSelect: (year: number, month: number) => void;
 }
 
-// Главный "календарь горения": строки = годы, столбцы = месяцы.
+// Main "burning calendar": rows = years, columns = months.
 export default function YearCalendar({ data, mode, selected, onSelect }: Props) {
   const max = Math.max(...data.years.flatMap((y) => y.months.map((v) => v ?? 0)));
 

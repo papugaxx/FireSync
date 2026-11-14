@@ -3,9 +3,9 @@ import { useRef, useState } from "react";
 
 interface Props {
   title: string;
-  /** кнопки в заголовке (например MODIS / VIIRS) */
+  /** buttons in the header (e.g. MODIS / VIIRS) */
   actions?: React.ReactNode;
-  /** стартовая позиция внутри области карты, px */
+  /** starting position inside the map area, px */
   initial: { x: number; y: number };
   width: number;
   z: number;
@@ -15,9 +15,9 @@ interface Props {
 }
 
 /**
- * Окно поверх карты. На компьютере перетаскивается за заголовок и не выходит
- * за пределы родителя (родитель должен быть position: relative).
- * На телефоне (< lg) открывается на весь экран.
+ * Window on top of the map. On desktop it is dragged by its header and stays
+ * inside its parent (the parent must be position: relative).
+ * On a phone (< lg) it opens full screen.
  */
 export default function FloatingWindow({ title, actions, initial, width, z, onFocus, onClose, children }: Props) {
   const [pos, setPos] = useState(initial);
@@ -25,9 +25,9 @@ export default function FloatingWindow({ title, actions, initial, width, z, onFo
   const drag = useRef<{ dx: number; dy: number } | null>(null);
 
   function onPointerDown(e: React.PointerEvent) {
-    if ((e.target as HTMLElement).closest("button")) return; // клики по кнопкам не тащат окно
+    if ((e.target as HTMLElement).closest("button")) return; // clicks on buttons do not drag the window
     if (window.matchMedia("(max-width: 1023px)").matches) return;
-    // берём реальное положение окна (оно могло быть прижато к краю через CSS min())
+    // use the window's real position (it may have been pushed to the edge by CSS min())
     const el = ref.current!;
     drag.current = { dx: e.clientX - el.offsetLeft, dy: e.clientY - el.offsetTop };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -40,7 +40,7 @@ export default function FloatingWindow({ title, actions, initial, width, z, onFo
     const maxY = (parent?.clientHeight ?? window.innerHeight) - ref.current.offsetHeight;
     setPos({
       x: Math.min(Math.max(0, e.clientX - drag.current.dx), Math.max(0, maxX)),
-      // окно сжимается по высоте, если его опустить; не даём сделать его ниже 220px
+      // the window shrinks in height when moved down; do not let it get shorter than 220px
       y: Math.min(Math.max(0, e.clientY - drag.current.dy), Math.max(0, Math.min(maxY, (parent?.clientHeight ?? 0) - 220))),
     });
   }
@@ -56,7 +56,7 @@ export default function FloatingWindow({ title, actions, initial, width, z, onFo
       aria-label={title}
       onPointerDownCapture={onFocus}
       style={{
-        // не даём окну стартовать за правым краем на небольших экранах
+        // do not let the window start past the right edge on small screens
         left: `min(${pos.x}px, calc(100% - ${width}px - 16px))`,
         top: pos.y, width, zIndex: z, maxHeight: `calc(100% - ${pos.y + 12}px)` }}
       className="fixed inset-0 z-[2000] flex flex-col overflow-auto bg-surface max-lg:left-0! max-lg:top-0! max-lg:w-full! max-lg:max-h-none! lg:absolute lg:inset-auto lg:max-w-[calc(100%-1rem)] lg:rounded-3xl lg:border lg:border-line lg:shadow-2xl lg:shadow-black/50"

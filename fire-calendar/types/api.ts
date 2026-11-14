@@ -1,5 +1,5 @@
-// Типы ответов API. Договорённость с бэкендом (Django), см. API.md.
-// null = "нет данных" (прибор не работал), 0 = данные есть, пожаров нет.
+// API response types. Agreement with the backend (Django), see API.md.
+// null = "no data" (the instrument was not working), 0 = data exists, no fires.
 
 export type Sensor = "MODIS" | "VIIRS";
 
@@ -15,17 +15,17 @@ export interface MetaResponse {
   years: number[];
 }
 
-/** Тепловая карта "год × месяц": гармонизированные активные ячейки. */
+/** "Year × month" heatmap: harmonized active cells. */
 export interface CalendarYear {
   year: number;
-  /** 12 значений, январь..декабрь */
+  /** 12 values, January..December */
   months: (number | null)[];
 }
 
 export interface CalendarResponse {
   region: string;
   years: CalendarYear[];
-  /** медиана по каждому месяцу за все годы */
+  /** median for each month across all years */
   median: number[];
   harmonization: {
     method: string;
@@ -53,7 +53,7 @@ export interface Hotspot {
   lat: number;
   lon: number;
   date: string;
-  /** какой прибор видел эту ячейку */
+  /** which instrument saw this cell */
   seenBy: "MODIS" | "VIIRS" | "BOTH";
   frp: number;
 }
@@ -65,7 +65,7 @@ export interface HotspotsResponse {
   hotspots: Hotspot[];
 }
 
-/** График "активность по месяцам": обе линии в одной шкале (VIIRS уже гармонизирован). */
+/** "Activity by month" chart: both lines on one scale (VIIRS is already harmonized). */
 export interface MonthlyResponse {
   region: string;
   year: number;
@@ -73,9 +73,9 @@ export interface MonthlyResponse {
     month: number;
     modis: number | null;
     viirs: number | null;
-    /** площадь ячеек с активным огнём, км² (сумма по дням) */
+    /** area of cells with active fire, km² (sum over days) */
     areaKm2: number | null;
-    /** средняя и максимальная мощность пожаров, МВт */
+    /** mean and maximum fire power, MW */
     frpMean: number | null;
     frpMax: number | null;
   }[];

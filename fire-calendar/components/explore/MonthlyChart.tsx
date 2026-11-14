@@ -1,7 +1,7 @@
 "use client";
 import { MONTHS } from "@/lib/colors";
 
-const CHART = { above: "#f03b20", normal: "#feb24c" }; // TODO: цвета из дизайна
+const CHART = { above: "#f03b20", normal: "#feb24c" }; // TODO: colors from the design
 
 interface Props {
   year: number;
@@ -10,7 +10,7 @@ interface Props {
   selectedMonth: number;
 }
 
-// Столбики выбранного года + линия медианы. Чистый SVG, без библиотек.
+// Bars for the selected year + median line. Pure SVG, no libraries.
 export default function MonthlyChart({ year, values, median, selectedMonth }: Props) {
   const W = 600, H = 220, P = { l: 40, r: 10, t: 10, b: 24 };
   const max = Math.max(1, ...values.map((v) => v ?? 0), ...median) * 1.1;

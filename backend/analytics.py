@@ -1,28 +1,28 @@
 """
-analytics.py — РАСЧЁТЫ ПОВЕРХ КАЛЕНДАРЯ
+analytics.py — CALCULATIONS ON TOP OF THE CALENDAR
 
-Здесь только математика: ни базы, ни HTTP. Поэтому каждую функцию легко
-проверить тестом.
+Only math lives here: no database, no HTTP. That makes every function easy
+to cover with a test.
 
-  * color levels  — уровни 0..4 для раскраски календаря (как у GitHub);
-  * harmonize     — сведение MODIS и VIIRS в один ряд (то, что просит челлендж);
-  * anomaly       — сравнение месяца с медианой прошлых лет.
+  * color levels  — levels 0..4 for coloring the calendar (like GitHub);
+  * harmonize     — merging MODIS and VIIRS into one series (what the challenge asks for);
+  * anomaly       — comparing a month with the median of previous years.
 """
 
 import math
 from datetime import date, timedelta
 from statistics import median, quantiles
 
-import config  # noqa: F401 — первым: подключает папку data_pipeline с модулем напарника
+import config  # noqa: F401 — must come first: adds the data_pipeline folder with the partner's module
 from fires_data import calibrate_calendar
 
-MIN_HISTORY_YEARS = 3   # для аномалии нужно минимум 3 прошлых года
+MIN_HISTORY_YEARS = 3   # an anomaly needs at least 3 previous years
 
 
-# ---------- Раскраска календаря ----------
+# ---------- Calendar coloring ----------
 
 def color_breaks(values):
-    """Границы уровней: квартили среди дней, где пожары были (нули не считаем)."""
+    """Level boundaries: quartiles among days that had fires (zeros are not counted)."""
     positive = sorted(v for v in values if v)
     if len(positive) < 2:
         return positive[:1]
@@ -30,7 +30,7 @@ def color_breaks(values):
 
 
 def level(value, breaks):
-    """0 — пожаров нет, 1..4 — от слабой активности к сильной, None — нет данных."""
+    """0 — no fires, 1..4 — from weak to strong activity, None — no data."""
     if value is None:
         return None
     if value == 0:
@@ -39,6 +39,12 @@ def level(value, breaks):
 
 
 def add_daily_levels(report):
+    """
+    Add a `color_scale` and a 0–4 `level` to every day of a calendar report.
+
+    Levels are computed separately for MODIS and VIIRS from the quartiles of the days in the report
+    (see `color_breaks`). The report is modified in place and returned.
+    """
     report["color_scale"] = {}
     for channel in ("modis", "viirs"):
         breaks = color_breaks(day[channel]["active_cells"] for day in report["daily"])
@@ -49,6 +55,12 @@ def add_daily_levels(report):
 
 
 def add_monthly_levels(result):
+    """
+    Add a `color_scale` and a 0–4 `level` to every month of a monthly report.
+
+    Works like `add_daily_levels`, but on `active_cell_days` per month. The result is modified in place
+    and returned.
+    """
     result["color_scale"] = {}
     for channel in ("modis", "viirs"):
         breaks = color_breaks(m[channel]["active_cell_days"] for m in result["months"])
@@ -58,20 +70,20 @@ def add_monthly_levels(result):
     return result
 
 
-# ---------- Гармонизация MODIS ↔ VIIRS ----------
+# ---------- MODIS ↔ VIIRS harmonization ----------
 
 def default_split(start, end):
-    """Первые 2/3 периода — обучение, последняя треть — проверка."""
+    """First 2/3 of the period is for training, the last third is for testing."""
     days = (end - start).days + 1
     return start + timedelta(days=math.ceil(days * 2 / 3))
 
 
 def harmonize(report, split_date):
     """
-    1) Эксперимент напарника: на днях ДО split_date подбирается коэффициент k
-       такой, что MODIS ≈ k × VIIRS; на днях ПОСЛЕ проверяется, насколько он точен.
-    2) Из него строим единый ряд «в единицах MODIS»: где есть MODIS — берём MODIS,
-       где есть только VIIRS — берём k × VIIRS. Источник каждого значения подписан.
+    1) The partner's experiment: on days BEFORE split_date a coefficient k is fitted
+       such that MODIS ≈ k × VIIRS; on days AFTER it, we check how accurate it is.
+    2) From it we build a single series "in MODIS units": where MODIS exists we use MODIS,
+       where only VIIRS exists we use k × VIIRS. The source of each value is labeled.
     """
     experiment = calibrate_calendar(report, split_date)
     k = experiment.get("coefficient")
@@ -104,18 +116,18 @@ def harmonize(report, split_date):
             "error_reduction_percent": round((1 - calibrated["mae"] / raw["mae"]) * 100, 1) if raw["mae"] else None,
             "test_r2_harmonized": None if calibrated["r2"] is None else round(calibrated["r2"], 3),
         })
-    # Объёмные служебные поля эксперимента фронту не нужны
+    # The frontend does not need the bulky internal fields of the experiment
     for key in ("input_windows", "input_method", "daily"):
         experiment.pop(key, None)
     return {"summary": summary, "series": series, "experiment": experiment}
 
 
-# ---------- Аномалия: месяц против прошлых лет ----------
+# ---------- Anomaly: a month versus previous years ----------
 
 def anomaly(months, year, month, series):
     """
-    months — результат grid_index.monthly() за несколько лет.
-    Берём только полностью загруженные месяцы, чтобы не сравнивать неполные данные.
+    months — the result of grid_index.monthly() over several years.
+    We take only fully loaded months so that incomplete data is not compared.
     """
     values = {m["year"]: m[series]["active_cell_days"] for m in months
               if m["month_number"] == month and m[series]["status"] == "complete"}
@@ -153,6 +165,6 @@ def anomaly(months, year, month, series):
 
 
 def full_years(first_day, last_day):
-    """Диапазон с 1 января первого года по 31 декабря последнего."""
+    """Range from January 1 of the first year to December 31 of the last year."""
     first, last = date.fromisoformat(first_day), date.fromisoformat(last_day)
     return date(first.year, 1, 1), date(last.year, 12, 31)

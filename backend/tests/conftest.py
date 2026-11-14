@@ -1,9 +1,9 @@
 """
-Общие заготовки для тестов.
+Shared fixtures for the tests.
 
-Тестовая база собирается КОДОМ НАПАРНИКА (parse_observations + replace_batch)
-из CSV в том же формате, что присылает NASA. Настоящая база не используется
-и не меняется.
+The test database is built BY THE PARTNER'S CODE (parse_observations + replace_batch)
+from CSV in the same format that NASA sends. The real database is not used
+and is not modified.
 """
 
 import csv
@@ -20,18 +20,18 @@ import pytest
 
 BACKEND = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND))
-sys.path.insert(0, str(BACKEND / "data_pipeline"))  # модуль напарника лежит рядом
+sys.path.insert(0, str(BACKEND / "data_pipeline"))  # the partner's module lives next to us
 
 from fires_data.parsing import parse_observations  # noqa: E402
 from fires_data.store import Store  # noqa: E402
 from fires_data.types import FetchPayload, Scope  # noqa: E402
 
 AUGUST = [date(2024, 8, 1) + timedelta(days=i) for i in range(31)]
-NRT_ONLY_DAY = date(2024, 9, 1)     # только оперативные (NRT) данные
-EMPTY_DAY = date(2024, 9, 2)        # MODIS загружен, но пожаров 0; VIIRS не загружен
-SP_AND_NRT_DAY = date(2024, 8, 5)   # есть и SP, и NRT — должен победить SP
-SNPP_DAY = date(2024, 8, 10)        # точки S-NPP — в календарь не входят
-EDGE_DAY = date(2024, 8, 7)         # точки ровно на линиях сетки
+NRT_ONLY_DAY = date(2024, 9, 1)     # near-real-time (NRT) data only
+EMPTY_DAY = date(2024, 9, 2)        # MODIS loaded but 0 fires; VIIRS not loaded
+SP_AND_NRT_DAY = date(2024, 8, 5)   # both SP and NRT exist — SP must win
+SNPP_DAY = date(2024, 8, 10)        # S-NPP points — not part of the calendar
+EDGE_DAY = date(2024, 8, 7)         # points exactly on grid lines
 
 
 def _csv(rows, sensor):
@@ -48,7 +48,7 @@ def _csv(rows, sensor):
 
 
 def save(store, source, day, points, satellite):
-    """Записать один дневной срез так же, как это делает загрузчик напарника."""
+    """Write one daily slice the same way the partner's loader does it."""
     modis = source.startswith("MODIS")
     version = ("6.1" if modis else "2.0") + ("NRT" if source.endswith("_NRT") else "")
     rows = []
@@ -71,16 +71,16 @@ def build_partner_db(path):
     store.save_scope(Scope.world())
 
     for number, day in enumerate(AUGUST):
-        # «Активность» меняется по дням, VIIRS видит примерно в 3 раза больше клеток
+        # "Activity" varies by day, VIIRS sees roughly 3 times more cells
         activity = 25 + int(15 * math.sin(number / 3)) + rng.randint(0, 5)
         modis_points, viirs_points = [], []
         for _ in range(activity):
-            lat, lon = rng.uniform(44.5, 52.5), rng.uniform(22.5, 40.5)      # Украина
+            lat, lon = rng.uniform(44.5, 52.5), rng.uniform(22.5, 40.5)      # Ukraine
             modis_points.append((lat, lon))
-            modis_points.append((lat + 0.001, lon + 0.001))                   # та же клетка
+            modis_points.append((lat + 0.001, lon + 0.001))                   # the same cell
             for _ in range(3):
                 viirs_points.append((lat + rng.uniform(-0.3, 0.3), lon + rng.uniform(-0.3, 0.3)))
-        for _ in range(activity * 2):                                         # Африка
+        for _ in range(activity * 2):                                         # Africa
             lat, lon = rng.uniform(-15, -2), rng.uniform(14, 33)
             modis_points.append((lat, lon))
             viirs_points.append((lat, lon))
@@ -92,14 +92,14 @@ def build_partner_db(path):
         save(store, "MODIS_SP", day, modis_points, lambda i: "T" if i % 2 else "A")
         save(store, "VIIRS_NOAA20_SP", day, viirs_points, "N20")
 
-    # Тот же день в NRT с другими точками: читаться должен SP
+    # The same day in NRT with different points: SP must be the one that is read
     save(store, "MODIS_NRT", SP_AND_NRT_DAY, [(10.0, 10.0), (11.0, 11.0)], "T")
-    # Точки S-NPP не входят в ряд VIIRS (там только NOAA-20)
+    # S-NPP points are not part of the VIIRS series (only NOAA-20 is)
     save(store, "VIIRS_SNPP_SP", SNPP_DAY, [(47.0, 30.0), (47.5, 30.5)], "N")
-    # День только с NRT
+    # A day with NRT only
     save(store, "MODIS_NRT", NRT_ONLY_DAY, [(48.2, 31.3), (48.25, 31.35), (-5.0, 20.0)], "A")
     save(store, "VIIRS_NOAA20_NRT", NRT_ONLY_DAY, [(48.2, 31.3), (48.6, 31.9), (-5.0, 20.0)], "N20")
-    # Загруженный пустой день
+    # A loaded empty day
     save(store, "MODIS_SP", EMPTY_DAY, [], "T")
     return store
 
@@ -113,7 +113,7 @@ def partner_db(tmp_path_factory):
 
 @pytest.fixture(scope="session")
 def app_env(partner_db, tmp_path_factory):
-    """Настроить переменные окружения и заново импортировать модули API."""
+    """Set the environment variables and re-import the API modules."""
     os.environ["FIRMS_DB_PATH"] = str(partner_db)
     os.environ["FIRESYNC_INDEX_PATH"] = str(tmp_path_factory.mktemp("cache") / "grid_index.sqlite3")
     os.environ["FIRESYNC_AUTO_REFRESH"] = "0"

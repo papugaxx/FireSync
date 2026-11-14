@@ -1,4 +1,4 @@
-// Базовые UI-элементы в стиле дизайна. Страницы собираются из них.
+// Basic UI elements in the design style. Pages are assembled from them.
 import Link from "next/link";
 
 export function Section({ id, title, children }: { id?: string; title: string; children: React.ReactNode }) {
@@ -10,7 +10,7 @@ export function Section({ id, title, children }: { id?: string; title: string; c
   );
 }
 
-/** Тёмная панель со скруглением и тонкой рамкой. */
+/** Dark panel with rounded corners and a thin border. */
 export function Panel({ className = "", children }: { className?: string; children: React.ReactNode }) {
   return <div className={`rounded-3xl border border-line bg-surface ${className}`}>{children}</div>;
 }
@@ -81,7 +81,7 @@ export function Button({ className = "", ...props }: React.ButtonHTMLAttributes<
   );
 }
 
-/** Таблетка-переключатель (MODIS / VIIRS). color — фон в активном состоянии. */
+/** Pill toggle (MODIS / VIIRS). color — background in the active state. */
 export function Toggle({
   active,
   color,
@@ -105,7 +105,7 @@ export function Toggle({
   );
 }
 
-/** Подпись + выпадающий список в одной "капсуле", как в панели фильтров. */
+/** Label + dropdown in one "capsule", as in the filter panel. */
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex items-center gap-4 rounded-2xl bg-bg/70 py-1.5 pl-5 pr-1.5">
@@ -146,7 +146,7 @@ export function Stat({ label, value, hint }: { label: string; value: React.React
   );
 }
 
-/** Заглушка: место под будущий контент или состояние загрузки. */
+/** Placeholder: a spot for future content or a loading state. */
 export function Placeholder({ className = "h-40", label = "Loading…" }: { className?: string; label?: string }) {
   return (
     <div className={`flex w-full animate-pulse items-center justify-center rounded-2xl bg-surface-2/60 text-sm text-muted ${className}`}>

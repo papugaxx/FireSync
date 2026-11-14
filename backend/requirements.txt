@@ -1,9 +1,9 @@
 fastapi>=0.110
 uvicorn[standard]>=0.29
 
-# для тестов
+# for tests
 pytest>=8
 httpx>=0.27
 
-# Модуль напарника ставится отдельной командой (он лежит рядом, в data_pipeline):
+# The partner's module is installed with a separate command (it lives next to us, in data_pipeline):
 #   pip install -e ./data_pipeline

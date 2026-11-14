@@ -1,5 +1,5 @@
-// Тестовые данные, пока нет реального API.
-// Генерируются детерминированно (одинаковые при каждой перезагрузке).
+// Test data until a real API exists.
+// Generated deterministically (identical on every reload).
 import type {
   CalendarResponse,
   HotspotsResponse,
@@ -19,7 +19,7 @@ export const REGIONS: Region[] = [
 
 export const YEARS = Array.from({ length: 25 }, (_, i) => 2001 + i); // 2001..2025
 
-// Сезонность: в каком месяце пик пожаров (0 = январь) и его сила
+// Seasonality: which month is the fire peak (0 = January) and how strong it is
 const SEASON: Record<string, { peak: number; second?: number; scale: number }> = {
   world: { peak: 7, second: 1, scale: 60000 },
   ukraine: { peak: 7, second: 3, scale: 900 },
@@ -66,9 +66,9 @@ export function mockMeta(): MetaResponse {
 export function mockCalendar(regionId: string): CalendarResponse {
   const r = rng(hash(regionId));
   const years = YEARS.map((year) => {
-    const yearFactor = 0.5 + r() * 1.1 + (r() < 0.12 ? 1.2 : 0); // иногда аномальный год
+    const yearFactor = 0.5 + r() * 1.1 + (r() < 0.12 ? 1.2 : 0); // occasionally an anomalous year
     const months = Array.from({ length: 12 }, (_, m) => {
-      // данных за будущие месяцы нет
+      // there is no data for future months
       if (year === 2025 && m > 9) return null;
       return Math.round(monthWeight(regionId, m) * yearFactor * (0.6 + r() * 0.8));
     });
@@ -107,7 +107,7 @@ export function mockHotspots(regionId: string, year: number, month: number): Hot
   const r = rng(hash(`hs-${regionId}-${year}-${month}`));
   const isWorld = regionId === "world";
   const count = isWorld ? 2500 : Math.min(400, Math.round(monthWeight(regionId, month - 1) / 6) + 20);
-  // пожары кучкуются: несколько центров, вокруг них точки
+  // fires cluster: several centers, with points around them
   const centers = isWorld
     ? WORLD_FIRE_BELTS
     : Array.from({ length: 6 }, () => [s + r() * (n - s), w + r() * (e - w)]);
@@ -124,13 +124,13 @@ export function mockHotspots(regionId: string, year: number, month: number): Hot
         | "MODIS"
         | "VIIRS"
         | "BOTH",
-      frp: Math.round(3 + r() ** 3 * 600), // большинство пожаров слабые, редкие — очень мощные
+      frp: Math.round(3 + r() ** 3 * 600), // most fires are weak, rare ones are very powerful
     };
   });
   return { region: regionId, from: `${year}-${month}-01`, to: `${year}-${month}-28`, hotspots };
 }
 
-// Примерные центры пожарных поясов планеты (только для мок-карты мира)
+// Approximate centers of the planet's fire belts (only for the mock world map)
 const WORLD_FIRE_BELTS: number[][] = [
   [10, -5], [9, 10], [8, 22], [6, 30], [-12, 25], [-15, 35], [-20, 30], [-19, 47],
   [-8, -50], [-12, -45], [-18, -55], [-5, -62], [-28, -60], [5, -72],
@@ -149,9 +149,9 @@ export function mockMonthly(regionId: string, year: number): MonthlyResponse {
     months: row.months.map((v, i) => ({
       month: i + 1,
       modis: v,
-      // VIIRS после гармонизации близок к MODIS; до 2012 года VIIRS ещё не летал
+      // VIIRS after harmonization is close to MODIS; before 2012 VIIRS was not flying yet
       viirs: v === null || year < 2012 ? null : Math.round(v * (0.85 + r() * 0.3)),
-      // площадь: ~100 км² на ячейку 0.1° (на средних широтах)
+      // area: ~100 km² per 0.1° cell (at mid latitudes)
       areaKm2: v === null ? null : v * 100,
       frpMean: v === null ? null : Math.round(15 + r() * 25 + (v / 1000) * 3),
       frpMax: v === null ? null : Math.round(250 + r() * 900),

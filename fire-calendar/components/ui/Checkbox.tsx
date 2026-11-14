@@ -1,6 +1,6 @@
 "use client";
 
-/** Квадратная галочка как в макете (MODIS / VIIRS). */
+/** Square checkbox as in the mockup (MODIS / VIIRS). */
 export default function Checkbox({
   checked,
   onChange,
@@ -10,7 +10,7 @@ export default function Checkbox({
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
-  /** цвет квадрата, когда отмечено */
+  /** square color when checked */
   color: string;
 }) {
   return (
