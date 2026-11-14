@@ -124,7 +124,7 @@ export function mockHotspots(regionId: string, year: number, month: number): Hot
         | "MODIS"
         | "VIIRS"
         | "BOTH",
-      frp: Math.round(5 + r() * 120),
+      frp: Math.round(3 + r() ** 3 * 600), // большинство пожаров слабые, редкие — очень мощные
     };
   });
   return { region: regionId, from: `${year}-${month}-01`, to: `${year}-${month}-28`, hotspots };
@@ -151,6 +151,10 @@ export function mockMonthly(regionId: string, year: number): MonthlyResponse {
       modis: v,
       // VIIRS после гармонизации близок к MODIS; до 2012 года VIIRS ещё не летал
       viirs: v === null || year < 2012 ? null : Math.round(v * (0.85 + r() * 0.3)),
+      // площадь: ~100 км² на ячейку 0.1° (на средних широтах)
+      areaKm2: v === null ? null : v * 100,
+      frpMean: v === null ? null : Math.round(15 + r() * 25 + (v / 1000) * 3),
+      frpMax: v === null ? null : Math.round(250 + r() * 900),
     })),
   };
 }

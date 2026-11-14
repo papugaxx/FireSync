@@ -32,6 +32,7 @@ export function Card({
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           {title && <h3 className="font-display text-lg md:text-xl">{title}</h3>}
           {action}
+          
         </div>
       )}
       {children}

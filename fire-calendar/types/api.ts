@@ -69,5 +69,14 @@ export interface HotspotsResponse {
 export interface MonthlyResponse {
   region: string;
   year: number;
-  months: { month: number; modis: number | null; viirs: number | null }[];
+  months: {
+    month: number;
+    modis: number | null;
+    viirs: number | null;
+    /** площадь ячеек с активным огнём, км² (сумма по дням) */
+    areaKm2: number | null;
+    /** средняя и максимальная мощность пожаров, МВт */
+    frpMean: number | null;
+    frpMax: number | null;
+  }[];
 }

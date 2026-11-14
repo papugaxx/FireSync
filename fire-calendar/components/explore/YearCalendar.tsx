@@ -15,10 +15,10 @@ export default function YearCalendar({ data, mode, selected, onSelect }: Props) 
 
   return (
     <div className="overflow-x-auto">
-      <table className="mx-auto w-full min-w-[520px] table-fixed border-separate border-spacing-[3px] text-xs">
+      <table className="w-full min-w-[520px] border-separate border-spacing-[3px] text-xs">
         <thead>
-          <tr>
-            <th className="w-12" />
+          <tr >
+            <th />
             {MONTHS.map((m) => (
               <th key={m} className="font-normal">
                 {m}
@@ -39,8 +39,9 @@ export default function YearCalendar({ data, mode, selected, onSelect }: Props) 
                     <button
                       onClick={() => onSelect(y.year, i + 1)}
                       disabled={v === null}
-                      className={`block h-5 w-full disabled:cursor-not-allowed ${isSel ? "outline outline-2 outline-white" : ""
-                        }`}
+                      className={`block h-5 w-full disabled:cursor-not-allowed ${
+                        isSel ? "outline outline-2 outline-white" : ""
+                      }`}
                       style={{ background: bg }}
                       title={
                         v === null

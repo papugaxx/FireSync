@@ -12,7 +12,7 @@ interface Props {
 
 // Линейный график "Monthly activity over the year". Чистый SVG, без библиотек.
 export default function ActivityChart({ data, show, selectedMonth, onSelectMonth }: Props) {
-  const W = 1300, H = 400, P = { l: 20, r: 20, t: 30, b: 70 };
+  const W = 900, H = 300, P = { l: 20, r: 20, t: 20, b: 50 };
   const series = [
     { key: "modis" as const, color: C.modis, on: show.modis },
     { key: "viirs" as const, color: C.viirs, on: show.viirs },
@@ -34,7 +34,7 @@ export default function ActivityChart({ data, show, selectedMonth, onSelectMonth
   };
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label={`Monthly fire activity in ${data.year}`}>
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[560px]" role="img" aria-label={`Monthly fire activity in ${data.year}`}>
       {/* пунктирные уровни */}
       {[0.25, 0.5, 0.75].map((t) => (
         <line key={t} x1={P.l + 10} x2={W - P.r} y1={y(max * t)} y2={y(max * t)} stroke={C.grid} strokeWidth={2} strokeDasharray="4 8" />
@@ -43,14 +43,14 @@ export default function ActivityChart({ data, show, selectedMonth, onSelectMonth
       <line x1={P.l} x2={P.l} y1={P.t - 20} y2={baseY} stroke={C.grid} strokeWidth={2} />
       <line x1={P.l} x2={W - P.r} y1={baseY} y2={baseY} stroke={C.grid} strokeWidth={2} />
 
-      {series.map((s) => (s.on ? <path key={s.key} d={path(s.key)} fill="none" stroke={s.color} strokeWidth={3} strokeLinejoin="round" /> : null))}
+      {series.map((s) => (s.on ? <path key={s.key} d={path(s.key)} fill="none" stroke={s.color} strokeWidth={2.5} strokeLinejoin="round" /> : null))}
 
       {/* точки выбранного месяца */}
       {series.map((s) => {
         const v = data.months[selectedMonth - 1]?.[s.key];
         if (!s.on || v === null || v === undefined) return null;
         return (
-          <circle key={s.key} cx={x(selectedMonth - 1)} cy={y(v)} r={8} fill={s.color} stroke="#111827" strokeWidth={3}>
+          <circle key={s.key} cx={x(selectedMonth - 1)} cy={y(v)} r={6} fill={s.color} stroke="#111827" strokeWidth={2}>
             <title>{`${s.key.toUpperCase()}: ${v}`}</title>
           </circle>
         );
@@ -62,8 +62,8 @@ export default function ActivityChart({ data, show, selectedMonth, onSelectMonth
         return (
           <g key={m.month} onClick={() => onSelectMonth(m.month)} className="cursor-pointer">
             <title>{`MODIS ${m.modis ?? "—"} · VIIRS ${m.viirs ?? "—"}`}</title>
-            <rect x={x(i) - 26} y={baseY + 12} width={52} height={50} rx={8} fill={isSel ? C.accent : "transparent"} />
-            <text x={x(i)} y={baseY + 45} textAnchor="middle" fontSize={26} fill="#fff">
+            <rect x={x(i) - 18} y={baseY + 8} width={36} height={32} rx={6} fill={isSel ? C.accent : "transparent"} />
+            <text x={x(i)} y={baseY + 30} textAnchor="middle" fontSize={16} fill="#fff">
               {m.month}
             </text>
           </g>

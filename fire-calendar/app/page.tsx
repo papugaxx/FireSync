@@ -1,6 +1,12 @@
 // Лендинг: только структура секций и тексты. Дизайн добавляется позже.
 import { ButtonLink, Card, Placeholder, Section } from "@/components/ui";
 
+const cardsTheProblem = [
+  { title: "25 yrs", text: "of MODIS hotspots since 2000" },
+  { title: "375 m", text: "VIIRS pixel vs ~1 km for MODIS" },
+  { title: "2–3×", text: "more VIIRS detections for the same fire" },
+];
+
 export default function Home() {
   return (
     <>
@@ -25,9 +31,11 @@ export default function Home() {
           because of different resolution, sensitivity and observation schedules.
         </p>
         <div className="grid gap-4 md:grid-cols-3">
-          <Card title="25 yrs">of MODIS hotspots since 2000</Card>
-          <Card title="375 m">VIIRS pixel vs ~1 km for MODIS</Card>
-          <Card title="2–3×">more VIIRS detections for the same fire</Card>
+          {cardsTheProblem.map((cards) =>
+            <Card key={cards.title} title={cards.title}>
+              {cards.text}
+            </Card>
+          )}
         </div>
       </Section>
 

@@ -17,33 +17,26 @@ export default function FireMap({ region, hotspots }: { region: Region; hotspots
   const layerRef = useRef<L.LayerGroup | null>(null);
 
   // 1. создать карту при появлении, удалить при уходе со страницы
-  // 1. создать карту при появлении, удалить при уходе со страницы
   useEffect(() => {
     if (!containerRef.current) return;
-
-    // Границы мира: по широте только реальная карта (±85°), по долготе с запасом,
-    // чтобы можно было крутить мир влево-вправо
+    // По широте — только реальная карта (±85°), по долготе с запасом, чтобы крутить мир
     const worldBounds = L.latLngBounds([-85, -540], [85, 540]);
-
     const map = L.map(containerRef.current, {
       scrollWheelZoom: false,
       zoomControl: false,
       worldCopyJump: true,
-      preferCanvas: true,
+      preferCanvas: true, // тысячи точек рисуются быстрее
       maxBounds: worldBounds,
-      maxBoundsViscosity: 1.0, // 1 = карта упирается в край и дальше не тянется
+      maxBoundsViscosity: 1.0, // карта упирается в край, пустоты сверху/снизу нет
     });
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
-    // Минимальный зум: мир по высоте должен закрывать всё окно карты,
-    // иначе сверху и снизу видно пустое место
+    // минимальный зум: мир по высоте закрывает всё окно карты
     const updateMinZoom = () => {
-      const h = map.getSize().y;
-      const minZoom = Math.max(2, Math.ceil(Math.log2(h / 256)));
+      const minZoom = Math.max(2, Math.ceil(Math.log2(map.getSize().y / 256)));
       map.setMinZoom(minZoom);
       if (map.getZoom() < minZoom) map.setZoom(minZoom);
     };
-    updateMinZoom();
     map.on("resize", updateMinZoom);
 
     // спутниковая подложка + границы стран (Esri, бесплатно, нужна подпись)
@@ -72,6 +65,7 @@ export default function FireMap({ region, hotspots }: { region: Region; hotspots
     const [s, w, n, e] = region.bbox;
     const bounds = L.latLngBounds([s, w], [n, e]);
     map.fitBounds(bounds, { padding: [20, 20] });
+    map.fire("resize"); // пересчитать минимальный зум после первой установки вида
     if (region.id === "world") return;
     const rect = L.rectangle(bounds, { color: "#17b6d9", weight: 2, fill: false, dashArray: "6 6" }).addTo(map);
     return () => {
