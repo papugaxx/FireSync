@@ -4,10 +4,10 @@ import { fireColor } from "@/lib/colors";
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
-// Календарь выбранного месяца по дням (как обычный настенный календарь).
+// Calendar of the selected month by day (like a regular wall calendar).
 export default function DayStrip({ days }: { days: DayValue[] }) {
   const max = Math.max(1, ...days.map((d) => d.harmonized ?? 0));
-  const offset = (new Date(days[0].date).getDay() + 6) % 7; // понедельник = 0
+  const offset = (new Date(days[0].date).getDay() + 6) % 7; // Monday = 0
 
   return (
     <div className="grid grid-cols-7 gap-1 text-xs">

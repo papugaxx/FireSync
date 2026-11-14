@@ -10,7 +10,7 @@ interface Props {
   onSelectMonth: (m: number) => void;
 }
 
-// Линейный график "Monthly activity over the year". Чистый SVG, без библиотек.
+// Line chart "Monthly activity over the year". Pure SVG, no libraries.
 export default function ActivityChart({ data, show, selectedMonth, onSelectMonth }: Props) {
   const W = 900, H = 300, P = { l: 20, r: 20, t: 20, b: 50 };
   const series = [
@@ -18,7 +18,7 @@ export default function ActivityChart({ data, show, selectedMonth, onSelectMonth
     { key: "viirs" as const, color: C.viirs, on: show.viirs },
   ];
   const all = data.months.flatMap((m) => [m.modis ?? 0, m.viirs ?? 0]);
-  const max = Math.max(1, ...all) * 1.6; // запас сверху, как в макете
+  const max = Math.max(1, ...all) * 1.6; // headroom at the top, as in the mockup
   const x = (i: number) => P.l + 30 + ((W - P.l - P.r - 50) / 11) * i;
   const y = (v: number) => P.t + (H - P.t - P.b) * (1 - v / max);
   const baseY = H - P.b;
@@ -35,17 +35,17 @@ export default function ActivityChart({ data, show, selectedMonth, onSelectMonth
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[560px]" role="img" aria-label={`Monthly fire activity in ${data.year}`}>
-      {/* пунктирные уровни */}
+      {/* dashed level lines */}
       {[0.25, 0.5, 0.75].map((t) => (
         <line key={t} x1={P.l + 10} x2={W - P.r} y1={y(max * t)} y2={y(max * t)} stroke={C.grid} strokeWidth={2} strokeDasharray="4 8" />
       ))}
-      {/* оси */}
+      {/* axes */}
       <line x1={P.l} x2={P.l} y1={P.t - 20} y2={baseY} stroke={C.grid} strokeWidth={2} />
       <line x1={P.l} x2={W - P.r} y1={baseY} y2={baseY} stroke={C.grid} strokeWidth={2} />
 
       {series.map((s) => (s.on ? <path key={s.key} d={path(s.key)} fill="none" stroke={s.color} strokeWidth={2.5} strokeLinejoin="round" /> : null))}
 
-      {/* точки выбранного месяца */}
+      {/* markers for the selected month */}
       {series.map((s) => {
         const v = data.months[selectedMonth - 1]?.[s.key];
         if (!s.on || v === null || v === undefined) return null;
@@ -56,7 +56,7 @@ export default function ActivityChart({ data, show, selectedMonth, onSelectMonth
         );
       })}
 
-      {/* подписи месяцев, кликабельные */}
+      {/* month labels, clickable */}
       {data.months.map((m, i) => {
         const isSel = m.month === selectedMonth;
         return (

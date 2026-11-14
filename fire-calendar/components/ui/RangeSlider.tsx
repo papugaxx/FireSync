@@ -6,12 +6,12 @@ interface Props {
   step?: number;
   value: [number, number];
   onChange: (v: [number, number]) => void;
-  /** подпись для крайнего правого значения, например "500+" */
+  /** label for the rightmost value, e.g. "500+" */
   format?: (v: number) => string;
   label: string;
 }
 
-/** Ползунок с двумя ручками (диапазон "от–до"). Стили ручек — в globals.css (.range-dual). */
+/** Slider with two thumbs (a "from–to" range). Thumb styles are in globals.css (.range-dual). */
 export default function RangeSlider({ min, max, step = 1, value, onChange, format = String, label }: Props) {
   const [lo, hi] = value;
   const pct = (v: number) => ((v - min) / (max - min)) * 100;
@@ -25,7 +25,7 @@ export default function RangeSlider({ min, max, step = 1, value, onChange, forma
         </span>
       </div>
       <div className="range-dual relative h-8">
-        {/* дорожка и выделенный отрезок */}
+        {/* track and the highlighted segment */}
         <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-surface-2" />
         <div
           className="absolute top-1/2 h-1 -translate-y-1/2 rounded-full bg-accent"

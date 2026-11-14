@@ -1,8 +1,8 @@
 """
-Тесты API. Запуск из папки backend:   python -m pytest -q
+API tests. Run from the backend folder:   python -m pytest -q
 
-База собирается кодом напарника во временной папке (см. conftest.py),
-настоящая база не используется.
+The database is built by the partner's code in a temporary folder (see conftest.py),
+the real database is not used.
 """
 
 import csv
@@ -14,7 +14,7 @@ from conftest import AUGUST, EDGE_DAY, EMPTY_DAY, NRT_ONLY_DAY, SP_AND_NRT_DAY
 AUG = "date_from=2024-08-01&date_to=2024-08-31"
 
 
-# ---------- Быстрый индекс = эталон напарника ----------
+# ---------- Fast index = the partner's reference ----------
 
 def test_fast_index_matches_partner_for_whole_world(app_env):
     grid_index, db = app_env["grid_index"], app_env["db"]
@@ -28,14 +28,14 @@ def test_fast_index_matches_partner_for_whole_world(app_env):
 
 def test_fast_index_matches_partner_inside_region(app_env):
     grid_index, db = app_env["grid_index"], app_env["db"]
-    bbox = (20.0, 40.0, 45.0, 55.0)  # на границах нет точек — расчёты обязаны совпасть
+    bbox = (20.0, 40.0, 45.0, 55.0)  # no points on the borders — the calculations must match
     start, end = date(2024, 8, 1), date(2024, 8, 31)
     assert grid_index.calendar("world", start, end, bbox)["daily"] == \
         db.reference_calendar("world", start, end, bbox)["daily"]
 
 
 def test_point_on_border_is_counted_once(app_env):
-    """Точка ровно на линии 41° относится к одной клетке, а не к обоим соседним регионам."""
+    """A point exactly on the 41° line belongs to one cell, not to both neighboring regions."""
     grid_index = app_env["grid_index"]
     day = EDGE_DAY
     west = grid_index.calendar("world", day, day, (22.0, 44.0, 41.0, 53.0))["daily"][0]["modis"]
@@ -49,7 +49,7 @@ def test_incremental_refresh_does_nothing_without_changes(app_env):
     assert result["status"] == "ok" and result["rebuilt_days"] == 0
 
 
-# ---------- Система ----------
+# ---------- System ----------
 
 def test_root_redirects_to_docs(client):
     response = client.get("/", follow_redirects=False)
@@ -63,7 +63,7 @@ def test_health_and_status(client):
     assert body["data"]["world"]["modis"]["loaded_days"] == 33
     assert body["data"]["world"]["viirs"]["first_day"] == "2024-08-01"
     assert body["partner_database"]["found"] is True
-    assert "path" not in str(body["partner_database"])  # путь к файлу наружу не показываем
+    assert "path" not in str(body["partner_database"])  # we do not expose the file path
 
 
 def test_process_time_header(client):
@@ -76,7 +76,7 @@ def test_regions(client):
     assert regions["world"]["bbox"] is None
 
 
-# ---------- Календарь ----------
+# ---------- Calendar ----------
 
 def test_calendar_by_region(client):
     body = client.get(f"/calendar?{AUG}&region=ukraine").json()
@@ -85,7 +85,7 @@ def test_calendar_by_region(client):
     assert body["area"]["region"] == "ukraine" and body["bbox"] == [22.0, 44.0, 41.0, 53.0]
     day = body["daily"][0]
     assert day["modis"]["status"] == "loaded" and day["modis"]["active_cells"] > 0
-    assert day["viirs"]["active_cells"] > day["modis"]["active_cells"]   # VIIRS видит больше
+    assert day["viirs"]["active_cells"] > day["modis"]["active_cells"]   # VIIRS sees more
     assert day["modis"]["level"] in (1, 2, 3, 4)
     assert len(body["color_scale"]["viirs"]["breaks"]) == 3
     assert "input_windows" not in body
@@ -94,7 +94,7 @@ def test_calendar_by_region(client):
 def test_calendar_marks_missing_and_empty_days(client):
     body = client.get("/calendar?date_from=2024-09-01&date_to=2024-09-03").json()
     nrt, empty, missing = body["daily"]
-    assert nrt["modis"]["status"] == nrt["viirs"]["status"] == "loaded"        # только NRT — тоже данные
+    assert nrt["modis"]["status"] == nrt["viirs"]["status"] == "loaded"        # NRT only — that is data too
     assert empty["modis"] == {"status": "loaded", "observations": 0, "active_cells": 0, "level": 0}
     assert empty["viirs"]["active_cells"] is None and empty["viirs"]["level"] is None
     assert missing["modis"]["status"] == "missing"
@@ -103,7 +103,7 @@ def test_calendar_marks_missing_and_empty_days(client):
 def test_sp_is_preferred_over_nrt(client):
     day = SP_AND_NRT_DAY.isoformat()
     body = client.get(f"/calendar?date_from={day}&date_to={day}&west=5&south=5&east=15&north=15").json()
-    assert body["daily"][0]["modis"]["observations"] == 0   # точки NRT в (10,10) не видны: читается SP
+    assert body["daily"][0]["modis"]["observations"] == 0   # NRT points at (10,10) are not visible: SP is read
 
 
 def test_custom_bbox_is_snapped_to_grid(client):
@@ -129,7 +129,7 @@ def test_monthly(client):
     assert august["modis"]["active_cell_days"] == sum(d["modis"]["active_cells"] for d in daily["daily"])
 
 
-# ---------- Карта ----------
+# ---------- Map ----------
 
 def test_cells_geojson(client):
     body = client.get(f"/cells?{AUG}&resolution=1").json()
@@ -159,13 +159,13 @@ def test_points_pages(client):
     assert geo["type"] == "FeatureCollection" and len(geo["features"]) == 2
 
 
-# ---------- Наука ----------
+# ---------- Science ----------
 
 def test_harmonization(client):
     body = client.get(f"/harmonization?{AUG}&region=ukraine&split_date=2024-08-22").json()
     summary = body["summary"]
     assert summary["status"] == "improved_on_holdout"
-    assert 0 < summary["coefficient"] < 1                 # VIIRS видит больше → k < 1
+    assert 0 < summary["coefficient"] < 1                 # VIIRS sees more → k < 1
     assert summary["test_mae_harmonized"] < summary["test_mae_raw"]
     assert summary["error_reduction_percent"] > 50
     assert len(body["series"]) == 31
@@ -205,7 +205,7 @@ def test_anomaly_math(app_env):
     assert result["verdict"] == "above_normal" and result["rank"] == 1
 
 
-# ---------- Выгрузка ----------
+# ---------- Export ----------
 
 def test_export_csv(client):
     response = client.get("/export.csv?date_from=2024-08-01&date_to=2024-08-02&region=ukraine&sensor=MODIS")
@@ -217,20 +217,20 @@ def test_export_csv(client):
     assert rows == sorted(rows, key=lambda r: r["observed_at"])
 
 
-# ---------- Ошибки понятны фронту ----------
+# ---------- Errors are clear to the frontend ----------
 
 def test_errors_are_json(client):
     cases = {
-        "/calendar?date_from=2024-08-31&date_to=2024-08-01": 400,           # даты наоборот
-        f"/calendar?{AUG}&west=22": 400,                                     # не все границы
-        f"/calendar?{AUG}&west=41&south=44&east=22&north=53": 400,           # запад > восток
-        f"/calendar?{AUG}&region=atlantis": 400,                             # нет такого региона
+        "/calendar?date_from=2024-08-31&date_to=2024-08-01": 400,           # dates reversed
+        f"/calendar?{AUG}&west=22": 400,                                     # not all boundaries
+        f"/calendar?{AUG}&west=41&south=44&east=22&north=53": 400,           # west > east
+        f"/calendar?{AUG}&region=atlantis": 400,                             # no such region
         f"/calendar?{AUG}&region=ukraine&west=1&south=1&east=2&north=2": 400,
-        "/calendar?date_from=2000-01-01&date_to=2024-12-31": 400,            # слишком длинно
-        "/points?date_from=2024-08-01&date_to=2024-08-31": 400,              # точки — до 7 дней
+        "/calendar?date_from=2000-01-01&date_to=2024-12-31": 400,            # too long
+        "/points?date_from=2024-08-01&date_to=2024-08-31": 400,              # points — up to 7 days
         f"/cells?{AUG}&resolution=0.3": 400,
-        "/calendar?date_from=вчера&date_to=2024-08-01": 422,                 # не дата
-        f"/calendar?{AUG}&west=500&south=1&east=600&north=2": 422,           # за пределами Земли
+        "/calendar?date_from=вчера&date_to=2024-08-01": 422,                 # not a date
+        f"/calendar?{AUG}&west=500&south=1&east=600&north=2": 422,           # outside the Earth
     }
     for url, status in cases.items():
         response = client.get(url)

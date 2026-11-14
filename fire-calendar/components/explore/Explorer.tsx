@@ -22,9 +22,9 @@ const FireMap = dynamic(() => import("./FireMap"), {
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MONTH_NUMS = Array.from({ length: 12 }, (_, i) => i + 1);
 
-const FRP_MAX = 500; // правая граница ползунка = "500+ МВт"
+const FRP_MAX = 500; // right end of the slider = "500+ MW"
 
-// Окна с графиками. Чтобы добавить новый график: добавить сюда и в renderWindow ниже.
+// Chart windows. To add a new chart: add it here and in renderWindow below.
 const CHARTS = [
   { id: "monthly", label: "Monthly activity", title: "Monthly activity over the year", width: 820 },
   { id: "surface", label: "Surface", title: "Area with active fire", width: 760 },
@@ -34,14 +34,14 @@ const CHARTS = [
 type ChartId = (typeof CHARTS)[number]["id"];
 
 export default function Explorer() {
-  // --- фильтры ---
+  // --- filters ---
   const [regionId, setRegionId] = useState("world");
   const [sel, setSel] = useState({ year: 2024, month: 8 });
-  const [day, setDay] = useState<string | null>(null); // выбранный день или весь месяц
+  const [day, setDay] = useState<string | null>(null); // selected day, or the whole month
   const [sensors, setSensors] = useState({ modis: true, viirs: true });
   const [frp, setFrp] = useState<[number, number]>([0, FRP_MAX]);
 
-  // --- окна ---
+  // --- windows ---
   const [windows, setWindows] = useState<{ id: ChartId; z: number }[]>([]);
   const topZ = Math.max(0, ...windows.map((w) => w.z));
   const isOpen = (id: ChartId) => windows.some((w) => w.id === id);
@@ -50,11 +50,11 @@ export default function Explorer() {
   const focusWindow = (id: ChartId) =>
     setWindows(windows.map((w) => (w.id === id && w.z !== topZ ? { ...w, z: topZ + 1 } : w)));
 
-  // --- настройки внутри окон ---
+  // --- settings inside the windows ---
   const [show, setShow] = useState({ modis: true, viirs: true });
   const [mode, setMode] = useState<"count" | "anomaly">("count");
 
-  // --- данные ---
+  // --- data ---
   const region = REGIONS.find((r) => r.id === regionId)!;
   const monthKey = `${regionId}-${sel.year}-${sel.month}`;
   const cal = useApi(regionId, () => api.calendar(regionId));
@@ -63,7 +63,7 @@ export default function Explorer() {
   const yr = useApi(`${regionId}-${sel.year}`, () => api.monthly(regionId, sel.year));
   const error = cal.error ?? mon.error ?? hs.error ?? yr.error ?? null;
 
-  // точки на карте с учётом дня, сенсоров и диапазона FRP
+  // map points, filtered by day, sensors and FRP range
   const points = useMemo(() => {
     const [lo, hi] = frp;
     return (hs.data?.hotspots ?? []).filter((h) => {
@@ -197,12 +197,12 @@ export default function Explorer() {
 
   return (
     <section className="relative lg:h-[calc(100dvh-8.5rem)] lg:min-h-[640px] lg:overflow-hidden">
-      {/* ===== Карта ===== */}
+      {/* ===== Map ===== */}
       <div className="h-[55vh] lg:absolute lg:inset-0 lg:h-auto">
         <FireMap region={region} hotspots={points} />
       </div>
 
-      {/* ===== Фильтры: Region / Year / Month ===== */}
+      {/* ===== Filters: Region / Year / Month ===== */}
       <div className="px-4 pt-4 lg:pointer-events-none lg:absolute lg:inset-x-0 lg:top-5 lg:z-[1100] lg:flex lg:justify-center lg:pl-[450px] lg:pr-6 min-[1800px]:px-6 lg:pt-0">
         <Panel className="pointer-events-auto flex flex-wrap gap-3 p-2.5">
           <Field label="Region">
@@ -233,10 +233,10 @@ export default function Explorer() {
         </Panel>
       </div>
 
-      {/* ===== Левая панель ===== */}
+      {/* ===== Left panel ===== */}
       <div className="px-4 py-4 lg:absolute lg:bottom-5 lg:left-0 lg:top-5 lg:z-[1100] lg:w-[430px] lg:p-0">
         <Panel className="flex h-full flex-col overflow-y-auto px-6 py-5 lg:rounded-l-none lg:border-l-0">
-          {/* Календарь */}
+          {/* Calendar */}
           <h2 className="text-center font-display text-xl 2xl:text-2xl">Burning activity</h2>
           <p className="mb-3 mt-1 text-center text-sm text-muted">
             {MONTH_NAMES[sel.month - 1]} {sel.year} · {region.name}
@@ -263,7 +263,7 @@ export default function Explorer() {
             <p className="mt-1 text-sm text-muted">Click a day to show it on the map</p>
           )}
 
-          {/* Сенсоры */}
+          {/* Sensors */}
           <div className="mt-3 flex justify-center gap-10 border-y border-line py-3">
             <Checkbox label="MODIS" color="#f39314" checked={sensors.modis} onChange={(v) => setSensors({ ...sensors, modis: v })} />
             <Checkbox label="VIIRS" color="#ffd60a" checked={sensors.viirs} onChange={(v) => setSensors({ ...sensors, viirs: v })} />
@@ -282,7 +282,7 @@ export default function Explorer() {
             />
           </div>
 
-          {/* Графики */}
+          {/* Charts */}
           <div className="border-b border-line py-3">
             <h3 className="mb-3 text-center font-display text-lg">Charts</h3>
             <div className="flex flex-wrap justify-center gap-3">
@@ -300,7 +300,7 @@ export default function Explorer() {
             </div>
           </div>
 
-          {/* кнопка всегда видна: на низких экранах панель прокручивается, а CSV прилипает к низу */}
+          {/* the button is always visible: on short screens the panel scrolls and the CSV button sticks to the bottom */}
           <div className="sticky -bottom-5 -mx-6 mt-auto flex justify-center bg-surface px-6 py-4">
             <Button onClick={exportCsv} disabled={!hs.data || points.length === 0} className="inline-flex items-center gap-2">
               <FileIcon /> CSV File
@@ -315,7 +315,7 @@ export default function Explorer() {
         </div>
       )}
 
-      {/* ===== Окна с графиками ===== */}
+      {/* ===== Chart windows ===== */}
       {windows.map((w) => {
         const cfg = CHARTS.find((c) => c.id === w.id)!;
         const idx = CHARTS.findIndex((c) => c.id === w.id);

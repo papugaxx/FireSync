@@ -4,11 +4,11 @@ import type { DayValue } from "@/types/api";
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 
 /**
- * Календарь месяца по дням. Дни с пожарами делятся на три равные группы:
- *  High   — бирюзовый (верхняя треть)
- *  Medium — синий
- *  Low    — тёмный
- * Без фона — пожаров не было; тусклая цифра — нет данных.
+ * Month calendar by day. Days with fires are split into three equal groups:
+ *  High   — turquoise (top third)
+ *  Medium — blue
+ *  Low    — dark
+ * No fill — no fires; dimmed number — no data.
  */
 export const DAY_LEVELS = [
   { key: "high", label: "High activity", className: "bg-accent" },
@@ -26,9 +26,9 @@ export default function DayCalendar({
   onSelect: (date: string | null) => void;
 }) {
   const active = days.map((d) => d.harmonized ?? 0).filter((v) => v > 0).sort((a, b) => a - b);
-  const t1 = active[Math.floor(active.length / 3)] ?? 0; // граница low / medium
-  const t2 = active[Math.floor((active.length * 2) / 3)] ?? 0; // граница medium / high
-  const offset = (new Date(days[0].date).getDay() + 6) % 7; // понедельник = 0
+  const t1 = active[Math.floor(active.length / 3)] ?? 0; // low / medium boundary
+  const t2 = active[Math.floor((active.length * 2) / 3)] ?? 0; // medium / high boundary
+  const offset = (new Date(days[0].date).getDay() + 6) % 7; // Monday = 0
 
   function levelClass(v: number | null) {
     if (!v) return "";

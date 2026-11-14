@@ -1,7 +1,7 @@
 "use client";
-// Карта на чистом Leaflet (без react-leaflet): Next.js 16 сохраняет страницы при уходе,
-// и react-leaflet при возврате падает. Здесь карта создаётся при показе и удаляется при уходе.
-// Подключается через next/dynamic с ssr: false (см. Explorer.tsx).
+// Map built on plain Leaflet (no react-leaflet): Next.js 16 keeps pages alive when navigating away,
+// and react-leaflet crashes on return. Here the map is created when shown and removed when leaving.
+// Loaded through next/dynamic with ssr: false (see Explorer.tsx).
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useEffect, useRef } from "react";
@@ -16,22 +16,22 @@ export default function FireMap({ region, hotspots }: { region: Region; hotspots
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
 
-  // 1. создать карту при появлении, удалить при уходе со страницы
+  // 1. create the map when it appears, remove it when leaving the page
   useEffect(() => {
     if (!containerRef.current) return;
-    // По широте — только реальная карта (±85°), по долготе с запасом, чтобы крутить мир
+    // Latitude: only the real map (±85°); longitude has extra room so the world can be dragged around
     const worldBounds = L.latLngBounds([-85, -540], [85, 540]);
     const map = L.map(containerRef.current, {
       scrollWheelZoom: false,
       zoomControl: false,
       worldCopyJump: true,
-      preferCanvas: true, // тысячи точек рисуются быстрее
+      preferCanvas: true, // thousands of points are drawn faster
       maxBounds: worldBounds,
-      maxBoundsViscosity: 1.0, // карта упирается в край, пустоты сверху/снизу нет
+      maxBoundsViscosity: 1.0, // the map hits the edge, so there is no empty space at the top or bottom
     });
     L.control.zoom({ position: "bottomright" }).addTo(map);
 
-    // минимальный зум: мир по высоте закрывает всё окно карты
+    // minimum zoom: the world's height covers the whole map window
     const updateMinZoom = () => {
       const minZoom = Math.max(2, Math.ceil(Math.log2(map.getSize().y / 256)));
       map.setMinZoom(minZoom);
@@ -39,7 +39,7 @@ export default function FireMap({ region, hotspots }: { region: Region; hotspots
     };
     map.on("resize", updateMinZoom);
 
-    // спутниковая подложка + границы стран (Esri, бесплатно, нужна подпись)
+    // satellite basemap + country borders (Esri, free, attribution required)
     L.tileLayer(`${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`, {
       attribution: "Imagery &copy; Esri, Maxar, Earthstar Geographics",
       maxZoom: 18,
@@ -58,14 +58,14 @@ export default function FireMap({ region, hotspots }: { region: Region; hotspots
     };
   }, []);
 
-  // 2. при смене региона: приблизиться к нему (для мира рамку не рисуем)
+  // 2. when the region changes: zoom to it (no outline for the world)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const [s, w, n, e] = region.bbox;
     const bounds = L.latLngBounds([s, w], [n, e]);
     map.fitBounds(bounds, { padding: [20, 20] });
-    map.fire("resize"); // пересчитать минимальный зум после первой установки вида
+    map.fire("resize"); // recalculate the minimum zoom after the initial view is set
     if (region.id === "world") return;
     const rect = L.rectangle(bounds, { color: "#17b6d9", weight: 2, fill: false, dashArray: "6 6" }).addTo(map);
     return () => {
@@ -73,7 +73,7 @@ export default function FireMap({ region, hotspots }: { region: Region; hotspots
     };
   }, [region]);
 
-  // 3. при смене данных: перерисовать точки
+  // 3. when the data changes: redraw the points
   useEffect(() => {
     const layer = layerRef.current;
     if (!layer) return;

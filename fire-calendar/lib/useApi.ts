@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 
 /**
- * Загружает данные и перезагружает их, когда меняется key.
- * Пока идёт загрузка для нового key, data = undefined (показываем заглушку).
+ * Loads data and reloads it when key changes.
+ * While loading for a new key, data = undefined (we show a placeholder).
  */
 export function useApi<T>(key: string, load: () => Promise<T>) {
   const [state, setState] = useState<{ key: string; data?: T; error?: string }>({ key: "" });
@@ -16,7 +16,7 @@ export function useApi<T>(key: string, load: () => Promise<T>) {
     return () => {
       alive = false;
     };
-    // load пересоздаётся на каждом рендере, ориентируемся только на key
+    // load is recreated on every render, so we depend only on key
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 

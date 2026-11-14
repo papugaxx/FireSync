@@ -1,6 +1,6 @@
-// Единая точка доступа к данным.
-// Пока NEXT_PUBLIC_API_URL не задан, отдаём моки. Когда бэкенд готов,
-// достаточно прописать адрес в .env.local, компоненты менять не нужно.
+// Single point of access to data.
+// While NEXT_PUBLIC_API_URL is not set, we return mocks. Once the backend is ready,
+// it is enough to put the address into .env.local; components do not need to change.
 import type {
   CalendarResponse,
   HotspotsResponse,
@@ -14,7 +14,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 async function get<T>(path: string, fallback: () => T): Promise<T> {
   if (!API_URL) {
-    await new Promise((r) => setTimeout(r, 250)); // имитация сети, чтобы видеть загрузку
+    await new Promise((r) => setTimeout(r, 250)); // simulated network delay so the loading state is visible
     return fallback();
   }
   const res = await fetch(`${API_URL}${path}`);
@@ -41,7 +41,7 @@ export const api = {
       mockHotspots(region, year, month),
     ),
 
-  /** ссылка на CSV; без бэкенда CSV собирается на клиенте (см. downloadCsv) */
+  /** link to the CSV; without a backend the CSV is built on the client (see downloadCsv) */
   exportUrl: (region: string, year: number, month: number) =>
     API_URL ? `${API_URL}/api/export/?region=${region}&year=${year}&month=${month}` : null,
 };

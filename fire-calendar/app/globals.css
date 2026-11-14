@@ -1,21 +1,21 @@
 @import "tailwindcss";
 
-/* Тема по дизайну (Frame 3). Цвета меняются здесь, классы вида bg-surface, text-accent и т.д. */
+/* Theme from the design (Frame 3). Colors are changed here; classes like bg-surface, text-accent, etc. */
 @theme {
-  --color-bg: #0a0e17;         /* фон страницы */
-  --color-surface: #111827;    /* панели, шапка */
-  --color-surface-2: #1a2335;  /* поля, неактивные элементы */
-  --color-line: #233047;       /* рамки панелей */
-  --color-muted: #8b95a8;      /* второстепенный текст */
-  --color-accent: #17b6d9;     /* бирюзовый: кнопки, выбранный месяц, активные дни */
-  --color-accent-2: #1f6fc0;   /* синий: дни со средней активностью */
-  --color-grid: #2a5bd7;       /* оси и пунктир графика */
-  --color-modis: #f39314;      /* оранжевый */
-  --color-viirs: #ffd60a;      /* жёлтый */
-  --color-fire: #ff2a1a;       /* точки пожаров на карте */
+  --color-bg: #0a0e17;         /* page background */
+  --color-surface: #111827;    /* panels, header */
+  --color-surface-2: #1a2335;  /* fields, inactive elements */
+  --color-line: #233047;       /* panel borders */
+  --color-muted: #8b95a8;      /* secondary text */
+  --color-accent: #17b6d9;     /* turquoise: buttons, selected month, active days */
+  --color-accent-2: #1f6fc0;   /* blue: days with medium activity */
+  --color-grid: #2a5bd7;       /* chart axes and dashed lines */
+  --color-modis: #f39314;      /* orange */
+  --color-viirs: #ffd60a;      /* yellow */
+  --color-fire: #ff2a1a;       /* fire points on the map */
 
   --font-sans: var(--font-inter);
-  --font-display: var(--font-michroma); /* широкий шрифт заголовков и логотипа */
+  --font-display: var(--font-michroma); /* wide font for headings and the logo */
 }
 
 html {
@@ -32,7 +32,7 @@ body {
   font-family: inherit;
 }
 
-/* Двойной ползунок: два input[type=range] друг на друге, кликаются только ручки */
+/* Dual slider: two input[type=range] stacked on top of each other, only the thumbs are clickable */
 .range-dual input[type="range"] {
   position: absolute;
   inset: 0;

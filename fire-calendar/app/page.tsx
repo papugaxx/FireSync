@@ -1,4 +1,4 @@
-// Лендинг: только структура секций и тексты. Дизайн добавляется позже.
+// Landing page: only the section structure and texts. Design is added later.
 import { ButtonLink, Card, Placeholder, Section } from "@/components/ui";
 
 const cardsTheProblem = [
