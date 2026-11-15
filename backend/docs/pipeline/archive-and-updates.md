@@ -8,7 +8,12 @@ The 2000–2025 archive export lives in `data/raw/NASA_FIRMS_2000_2025.csv` (50 
 python importer.py                       # data/raw/NASA_FIRMS_2000_2025.csv → data/firesync.sqlite3
 python importer.py --max-minutes 10      # stop after ~10 minutes; run again to continue
 python importer.py other_export.csv      # any FIRMS archive CSV with the same columns
+python importer.py --workers 4           # reading processes (default: CPU cores - 1, at most 8)
+python importer.py --replace             # import the whole file again
+python importer.py --db other.sqlite3    # another database file (default: FIRESYNC_DB_PATH)
 ```
+
+The default file is `FIRESYNC_ARCHIVE_CSV` (see [Configuration](../operations/configuration.md)).
 
 - Rows of MODIS (Terra/Aqua) and VIIRS NOAA-20 are kept. VIIRS S-NPP (281 million rows in this file) and
   NOAA-21 are skipped: the FireSync VIIRS series is NOAA-20 only, and mixing platforms would double-count.
@@ -95,9 +100,11 @@ stored in the database or returned by the API. NASA URLs in errors are replaced 
 ### By hand
 
 ```bash
-python updater.py --plan      # what would be downloaded
-python updater.py             # one update now
-python updater.py --status    # what is stored and what the last update did
+python updater.py --plan                  # what would be downloaded
+python updater.py                         # one update now
+python updater.py --max-requests 50       # one update with its own request limit
+python updater.py --until-done            # repeat runs until nothing is missing
+python updater.py --status                # what is stored and what the last update did
 ```
 
 `GET /api/updates/` and `GET /status` show the same state over HTTP.

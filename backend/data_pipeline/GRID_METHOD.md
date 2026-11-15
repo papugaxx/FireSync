@@ -18,9 +18,7 @@ the extreme +180°/+90° belong to the last cells. The selection rectangle filte
 the raw points before aggregation and includes its own borders.
 
 A cell is active if there is at least one selected record in it during the day.
-All valid confidence/type values are kept in the calculation: a separate mask of industrial
-sources is not applied. So this is an indicator of thermal detections, not only of
-forest fires.
+All valid confidence/type values are kept in the calculation.
 
 ## Units and gaps
 

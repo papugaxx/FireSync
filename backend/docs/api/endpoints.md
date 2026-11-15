@@ -51,6 +51,7 @@ What is stored and what the automatic NASA update is doing.
               "observations": 155932146, "api_days": 0}
   },
   "database": {"revision": 3, "size_mb": 2851.2, "archive": {"status": "completed", "...": "..."}},
+  "sync": {"status": "up_to_date", "pending_downloads": 0, "...": "..."},
   "update": {"state": "idle", "message": "Up to date with NASA FIRMS.", "api_key_configured": true,
              "last_completed_run": {"requests": 61, "days_written": 60, "stopped_because": null, "...": "..."}},
   "version": "2.0.0"
@@ -61,6 +62,8 @@ What is stored and what the automatic NASA update is doing.
 - `first_day` and `last_day` are the extremes, **not** a guarantee that every day in between is stored.
   Use `days` or the `coverage` block of `/calendar`. Missing days inside the archive are instrument outages.
 - `nrt_days` are days stored as near-real-time data; they are replaced by final (SP) data when NASA publishes it.
+- `sync` is the synchronisation summary of [`/api/sync/`](#api-sync): per sensor the first day the API is responsible
+  for, how many days are complete, still pending or not offered by NASA, and the last error.
 - The NASA key and the database file path are never exposed.
 
 ## GET /regions
@@ -69,12 +72,16 @@ Ready-made regions for demos. Defined in `config.REGIONS`.
 
 ```json
 [
-  {"id": "world",   "name": "World",   "bbox": null},
-  {"id": "ukraine", "name": "Ukraine", "bbox": [22.1, 44.3, 40.2, 52.4]}
+  {"id": "world",   "name": "World",   "bbox": null, "boundary": {"kind": "world"}},
+  {"id": "ukraine", "name": "Ukraine", "bbox": [22.1, 44.3, 40.2, 52.4],
+   "boundary": {"kind": "border", "id": "country:UKR", "source": "Natural Earth 1:10m"}}
 ]
 ```
 
-`bbox` is `[west, south, east, north]`, or `null` for the whole world. Available ids: `world`, `ukraine`,
+`bbox` is `[west, south, east, north]`, or `null` for the whole world. For a region with a real border it is only the
+view a map zooms to. `boundary.kind` says how the region is counted: `world`, `rectangle` (the `bbox` itself),
+`border` (a country or state border; `id` is `country:<ISO3>` or `state:<ISO 3166-2>`) or `border_part` (a border cut
+by the `bbox`, as for `siberia`). See [Region borders](#region-borders). Available ids: `world`, `ukraine`,
 `argentina`, `california`, `amazonas`, `central_africa`, `siberia`, `australia`.
 
 ## GET /calendar
@@ -333,7 +340,13 @@ The fire-calendar website calls `/api/...` (see [Frontend](../development/fronte
 | `GET /api/hotspots/?region&year&month[&day][&sensor][&limit]` | active 0.1° cells per day with `seenBy` and FRP |
 | `GET /api/export/?region&year&month[&day][&sensor]` | CSV of the individual detections |
 | `GET /api/updates/` | stored data and the state of the automatic NASA update |
+| [`GET /api/sync/`](#api-sync) | which dates are loaded, partial, pending or not offered by NASA |
+| [`GET /api/boundary/?region=`](#api-boundary) | the border a region is counted by (GeoJSON) |
+| [`GET /api/detections/?region&date`](#api-detections) | the individual detections of one day (optionally one cell) |
 
+The website's "Area & dates" window also calls the general endpoints: [`/calendar`](#get-calendar) and
+[`/cells`](#get-cells) for any region or own rectangle and period, [`/points`](#get-points) for the detections of one
+cell over a period, and [`/export.csv`](#get-exportcsv) for the download.
 
 ## Region borders { #region-borders }
 
@@ -342,7 +355,7 @@ Regions with a `boundary` in `config.REGIONS` are counted by the **real border**
 cells, `/api/detections/` and the CSV export alike. Each detection is tested (`geo.py`): cells completely
 inside or outside the border are decided at once, cells the border passes through are decided detection by
 detection. A border cell is active for a country only when one of its detections is inside; its counts
-include only those detections. `bbox` is now only the view the map zooms to.
+include only those detections. The region's `bbox` is only the view the map zooms to.
 
 | Region | Counted by |
 |---|---|
@@ -364,7 +377,18 @@ simplifies it for drawing.
 
 Individual detections of one UTC day inside the region's border: real latitude/longitude, time, satellite,
 FRP, confidence, product (SP/NRT) and the number of the 0.1° `cell`. With `cell` (from `/api/hotspots/`)
-only that cell. Paged with `limit`/`offset`.
+only that cell.
+
+| Parameter | Default | Description |
+|---|---|---|
+| `region` | `world` | An id from `/regions`. |
+| `date` | required | The UTC day, `YYYY-MM-DD`. Without it the request fails with `400`. |
+| `cell` | all | Only this 0.1° cell (its number from `/api/hotspots/`). |
+| `sensor` | both | `MODIS` or `VIIRS`. |
+| `limit` | `1000` | Page size, 1 to 5000. |
+| `offset` | `0` | Number of detections to skip. |
+
+The answer has `count`, `has_more` and `next_offset` for paging, and the `points`.
 
 `/api/hotspots/` items are **grid cells** (`kind: "cell"`, `cell`, `cell_size_degrees: 0.1`, `edge`); their
 `lat`/`lon` is the cell centre, never a fire location.
@@ -372,3 +396,6 @@ only that cell. Paged with `limit`/`offset`.
 ## GET /api/sync/ { #api-sync }
 
 The state of the synchronisation with NASA FIRMS; see [Archive and updates](../pipeline/archive-and-updates.md).
+Without parameters it returns the summary (per sensor: the first API day, counts, `pending_ranges`,
+`unavailable_ranges`, last success and last error). With `date_from` and `date_to` (at most 366 days apart) it also
+lists the state of every day in `daily`. It is computed from the database only; NASA is never asked.

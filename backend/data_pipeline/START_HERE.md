@@ -5,7 +5,7 @@ Working folder: `/Users/andrejkot/Downloads/projectHackaton/data_pipeline`.
 - The code that fetches NASA data and reads the database: `fires_data/`.
 - Local settings: `.env`.
 - The database: `var/fires.sqlite3`.
-- Description for Sasha: `README.md` and `LIVE_STATUS.md`.
+- Description for Sasha: the repository `README.md` (section "Data pipeline package") and `LIVE_STATUS.md`.
 
 The API has been verified. The database holds 4 893 436 raw observations. August 2024 is fully loaded
 for the whole world for MODIS and VIIRS NOAA-20: 31 days for each source.
@@ -54,5 +54,5 @@ The `grid_calendar` function is available to Sasha for connecting to FastAPI. Re
 and raw daily counts is already in the Store. Sasha connects the public HTTP methods.
 
 Multi-year seasonality and a historical norm need further loading of history.
-The loader saves progress; its commands are in README.md. The automatic
+The loader saves progress; its commands are in the repository README.md. The automatic
 update scheduler and fetching missing periods from HTTP are not connected yet.

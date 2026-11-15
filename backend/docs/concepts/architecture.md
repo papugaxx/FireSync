@@ -26,6 +26,7 @@ quota, size limits), validated CSV parsing, the grid reference calculation and t
 | [`frontend_api`](../reference/frontend_api.md) | The `/api/...` endpoints that the fire-calendar frontend calls, in the shapes of `fire-calendar/types/api.ts`. |
 | [`store`](../reference/store.md) | The database: schema, compressed day blocks, region tables, reading and writing. |
 | [`reports`](../reference/reports.md) | Calendar, monthly, map-cell and point queries for a region or an own rectangle. |
+| [`geo`](../reference/geo.md) | Real country/state borders (`geodata/boundaries.geojson`): decides, detection by detection, what lies inside a region's border. |
 | [`importer`](../reference/importer.md) | Loads a NASA FIRMS archive CSV (run once; resumable). |
 | [`updater`](../reference/updater.md) | Downloads new days from the NASA FIRMS API, in the background or from the command line. |
 | [`analytics`](../reference/analytics.md) | Pure math (levels, harmonization, anomaly). No database and no HTTP. |
@@ -49,6 +50,11 @@ For every ready-made region in `config.REGIONS` the database also stores, per da
 cells, detections and FRP sums of each sensor (`region_days`), and per month the distinct cells and their area
 (`region_months`). The calendar, the month view and the charts only read these small tables. They are rebuilt
 for a month whenever a day of that month changes, and completely when `config.REGIONS` changes.
+
+A region with a `boundary` in `config.REGIONS` is counted by its real border, not by its rectangle. `geo.py` lays the
+border over the 0.1° grid once: cells completely inside or outside are decided at once, and only detections in the
+cells the border passes through are tested individually. The region tables therefore hold exactly what the map draws.
+The regions are also rebuilt when a border or the way regions use it changes (`store.regions_signature`).
 
 An own rectangle (`west, south, east, north`) is computed from the day blocks, so its period is limited to
 `MAX_CUSTOM_AREA_DAYS` (366).

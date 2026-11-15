@@ -70,7 +70,9 @@ Guidelines:
 3. Link to other pages with **relative file paths**, for example `[Endpoints](../api/endpoints.md)`. Use anchors
    for sections: `../api/endpoints.md#get-calendar`. Strict mode checks these.
 
-To document a new Python module, add `docs/reference/<module>.md` with `::: <module>` and a nav entry.
+To document a new Python module, add `docs/reference/<module>.md` with `::: <module>` and a nav entry (as done for
+`geo`). The reference currently covers `main`, `frontend_api`, `store`, `reports`, `geo`, `importer`, `updater`,
+`analytics`, `config` and the `fires_data` package.
 
 ## Markdown features available
 
@@ -106,9 +108,10 @@ then the guide:
 | Grid method | `data_pipeline/GRID_METHOD.md` |
 | Harmonization experiment | `data_pipeline/CALIBRATION_METHOD.md` |
 | What data is loaded right now | `data_pipeline/LIVE_STATUS.md` (a dated snapshot) |
-| Pipeline commands | `data_pipeline/README.md` and `fires_data/cli.py` |
+| Pipeline commands | the "Data pipeline package" section of the repository `README.md` and `fires_data/cli.py` |
 | Server setup | the repository `README.md` and the files in `backend/deploy/` |
-| Endpoint behavior | `main.py` (the code is the source of truth) |
+| Endpoint behavior | `main.py` and `frontend_api.py` (the code is the source of truth) |
+| Region borders | `geo.py`, `tools/build_boundaries.py` and `REGIONS` in `config.py` |
 
 !!! tip "Keep volatile facts out of the guides"
     Counts such as "how many days are loaded" go stale quickly. Guides point to `fires_data status`, `/status` or

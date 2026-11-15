@@ -1,7 +1,8 @@
 # Testing
 
-There are two independent test suites: one for the backend API (45 tests) and one for the data pipeline (52 tests). Neither needs a
-NASA key, a network connection or the real database.
+There are two independent test suites: one for the backend API (68 tests) and one for the data pipeline (52 tests). Neither needs a
+NASA key, a network connection or the real database. `python -m pytest` prints the exact number of backend tests.
+
 
 ## Backend (API) tests
 
@@ -31,6 +32,10 @@ app on it. A few special days exercise edge cases:
 | `MODIS_ONLY_DAY` | 2024-09-02 | MODIS stored, VIIRS missing. |
 | `HISTORY_YEARS` | Augusts 2021–2023 | Enough complete years for medians and anomalies. |
 
+`conftest.py` also provides `border_rings(boundary_id)` (the rings of a border from `geodata/boundaries.geojson`) and
+`inside_border(rings, lat, lon)`, a plain ray-casting test written independently of `geo.py`. The tests use them to
+check the borders against an independent calculation.
+
 ### Fixtures
 
 | Fixture | Scope | What it provides |
@@ -43,10 +48,11 @@ app on it. A few special days exercise edge cases:
 
 | File | Checks |
 |---|---|
-| `test_store_import.py` | Every stored day has exactly its CSV rows; values round-trip exactly; NRT never added to SP; region tables equal a direct calculation; distinct-cell area; **the partner's `grid_calendar()` gives the same daily numbers**; stop-and-continue import gives the same database. |
-| `test_frontend_api.py` | Every `/api/...` call of the website, missing vs zero, complete months, medians, hotspots and their limit, CSV, errors, CORS, no key in the update status. |
+| `test_store_import.py` | Every stored day has exactly its CSV rows; values round-trip exactly; NRT never added to SP; region tables equal a direct calculation (Ukraine by its real border, Central Africa by its rectangle); distinct-cell area; **the partner's `grid_calendar()` gives the same daily numbers**; stop-and-continue import gives the same database; a border region drops the neighbours inside its rectangle. |
+| `test_geo.py` | The exact point-in-border test (`geo.py`): holes and separate parts, cells cut by the border, the configured borders against plain ray casting, Ukraine against its neighbours, Siberia as Russia cut by its rectangle. |
+| `test_frontend_api.py` | Every `/api/...` call of the website, missing vs zero, complete months, medians, hotspots and their limit, CSV, errors, CORS, no key in the update status, day and month states, `/api/sync/`, `/api/boundary/`, `/api/detections/`, and that map, calendar and statistics agree for a border region. |
 | `test_api.py` | `/health`, `/status`, `/regions`, `/calendar`, `/calendar/monthly`, `/cells`, `/points`, `/harmonization`, `/anomaly`, `/export.csv`, errors, gzip. |
-| `test_updater.py` | NASA updates with a fake client: plan after the archive, SP vs NRT, NRT → SP replacement, empty world day is not a zero, limits and quota, a bad answer skips one day, no key / no secret in errors, one update at a time. |
+| `test_updater.py` | NASA updates with a fake client: plan after the archive, SP vs NRT, NRT → SP replacement, empty world day is not a zero, limits and quota, a bad answer skips one day, no key / no secret in errors, one update at a time, the fixed start date (nothing before it is planned, also without an archive), gaps in the middle are filled, repeated runs never duplicate detections, network failures, sync states, new regions get their tables. |
 
 ### Adding a test
 

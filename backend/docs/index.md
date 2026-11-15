@@ -39,6 +39,7 @@ NASA FIRMS API ──(updater.py, background)──► data/firesync.sqlite3
 | [`frontend_api`](reference/frontend_api.md) | The `/api/...` endpoints of the fire-calendar website |
 | [`store`](reference/store.md) | The database: compressed day blocks of detections and region tables |
 | [`reports`](reference/reports.md) | Calendar, months, map cells and points for a region or rectangle |
+| [`geo`](reference/geo.md) | Real country/state borders: tests every detection against the border of a region |
 | [`importer`](reference/importer.md) | Loads the 2000–2025 archive CSV (once) |
 | [`updater`](reference/updater.md) | Downloads new days from the NASA FIRMS API |
 | [`analytics`](reference/analytics.md) | Math only: coloring levels, MODIS/VIIRS harmonization, anomalies |
@@ -76,19 +77,23 @@ FireSync/
 │   ├── frontend_api.py    /api/... for the website
 │   ├── store.py           the database (data/firesync.sqlite3)
 │   ├── reports.py         calendar, months, cells, points
+│   ├── geo.py             real borders for the region filter (geodata/boundaries.geojson)
 │   ├── importer.py        archive CSV → database
 │   ├── updater.py         NASA FIRMS API → database (background)
 │   ├── data/              database and raw/ archive CSV (not in git)
+│   ├── geodata/           boundaries.geojson (Natural Earth 1:10m borders)
+│   ├── tools/             build_boundaries.py (rebuilds geodata/boundaries.geojson)
 │   ├── analytics.py       levels, harmonization, anomalies
 │   ├── config.py          settings
 │   ├── tests/             API tests
 │   ├── deploy/            systemd, nginx, cron, update script
 │   ├── docs/ mkdocs.yml   this documentation
 │   └── data_pipeline/     NASA loader and SQLite storage (package fires_data)
-└── fire-calendar/         Next.js website
+├── fire-calendar/         Next.js website
+└── run.py                 starts the backend and the website together
 ```
 
-The `backend/_old/` folder holds earlier versions of some files. It is kept locally and is not in git.
+The `backend/_old/` folder holds earlier versions of some files (`config.py`, `db.py`, `main.py`). It is kept locally and is not in git.
 
 ## About the project
 

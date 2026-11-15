@@ -50,6 +50,6 @@ calibrate_calendar is a separate limited experiment: train 1â€“21 Aug / test 22â
 
 ## New NASA data
 
-The private .env and MAP_KEY are not included. Your own MAP_KEY is needed only for availability/sync. The loading commands with saved progress are in README.md. One ingestion worker; the update schedule and fetching what is missing over HTTP are not connected yet.
+The private .env and MAP_KEY are not included. Your own MAP_KEY is needed only for availability/sync. The loading commands with saved progress are in the repository README.md. One ingestion worker; the update schedule and fetching what is missing over HTTP are not connected yet.
 
 The database is a consistent SQLite VACUUM INTO snapshot. The source database was not changed. The code passed 52 checks. No commits/pushes were made.

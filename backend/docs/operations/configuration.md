@@ -39,15 +39,26 @@ database, found in this order: its `--db` option, the `FIRMS_DB_PATH` environmen
 `REGIONS` defines the ready-made regions (`/regions`, `/api/meta/`, `region=` everywhere):
 
 ```python
-"ukraine": {"name": "Ukraine", "bbox": [22.1, 44.3, 40.2, 52.4]},
+"ukraine": {"name": "Ukraine", "bbox": [22.1, 44.3, 40.2, 52.4], "boundary": "country:UKR"},
+"central_africa": {"name": "Central Africa", "bbox": [12.0, -18.0, 35.0, 0.0]},
+"siberia": {"name": "Siberia and Yakutia", "bbox": [90.0, 50.0, 140.0, 70.0], "boundary": "country:RUS", "clip": True},
 ```
 
-`bbox` is `[west, south, east, north]` (**longitude first**), or `None` for the whole world. The first five
-regions have the ids and rectangles of the fire-calendar frontend (`lib/mock.ts`), so the calendar counts exactly
-the rectangle the map draws.
+| Key | Meaning |
+|---|---|
+| `name` | The display name. |
+| `bbox` | `[west, south, east, north]` (**longitude first**), or `None` for the whole world. With a `boundary` it is only the view the map zooms to. |
+| `boundary` | Optional. The real border the region is counted by: `"country:<ISO 3166-1 alpha-3>"` or `"state:<ISO 3166-2>"`, taken from `geodata/boundaries.geojson` (`BOUNDARIES_FILE`). Detections outside the border are not part of the region, even inside the rectangle. Without it the region is the rectangle. |
+| `clip` | Optional. `True`: the region is the border cut by the rectangle (a part of a country, as for `siberia`). |
 
-To add or change a region, edit this dictionary and restart the API. The region tables are rebuilt in the
-background (a few minutes for the whole archive); until then the old numbers are served.
+The frontend's regions (`world`, `ukraine`, `argentina`, `california`, `amazonas`) exist here with the same ids, and the
+calendar counts exactly what the map outlines: the real border where there is one.
+
+To add or change a region, edit this dictionary and restart the API. A new `boundary` must first be added to
+`geodata/boundaries.geojson` once with `python tools/build_boundaries.py` (it downloads Natural Earth, or reads
+already downloaded files with `--from-folder DIR`); an unknown border is reported with exactly this hint. The region
+tables are rebuilt in the background (a few minutes for the whole archive); until then the old numbers are served.
+They are also rebuilt when the borders file or the way a region uses its border changes.
 
 ### Limits
 
@@ -62,6 +73,8 @@ background (a few minutes for the whole archive); until then the old numbers are
 | `MAX_EXPORT_ROWS` | 1 000 000 | `/export.csv`, `/api/export/` (streamed) |
 | `MAX_MAP_CELLS` | 20 000 | `/cells` |
 | `MAX_HOTSPOTS` | 10 000 | `/api/hotspots/` (the strongest cells per day are kept) |
+
+`MAX_POINTS_PER_PAGE` (5000) is also the page size limit of `/api/detections/`.
 
 ## Files and folders created at runtime
 

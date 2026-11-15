@@ -26,6 +26,7 @@
 
 | Symptom | Explanation |
 |---|---|
+| A region's numbers are lower than the same rectangle | Expected for regions with a real border (Ukraine, Argentina, Australia, California, Amazonas, Siberia): only detections inside the border are counted, not those of neighbouring countries inside the rectangle. Use an own `west/south/east/north` rectangle to count the plain box. |
 | Calendar values are `null` | The day is **not stored** (no data, or an instrument outage). This does not mean "no fires". Check `coverage` in the response or `/status`. |
 | `totals` is `null` | At least one requested day of that series is missing. Narrow the period to loaded days. |
 | `/anomaly` returns `insufficient_history` | It needs at least 3 earlier years with complete data for that month. |
@@ -45,6 +46,7 @@
 | An update stops at the request limit | Normal during catch-up; the next run starts after 10 minutes and continues. |
 | An update stops with "quota" | The NASA transaction quota is nearly used. The next run continues after the quota window resets. |
 | Region numbers look stale after editing `config.REGIONS` | The region tables are rebuilt in the background after a restart (a few minutes). |
+| `Region 'x': the border 'country:XXX' is not in boundaries.geojson` | A region names a border that has not been extracted yet. Run `python tools/build_boundaries.py` from `backend/` (it needs the network, or `--from-folder DIR` with the Natural Earth files) and restart. |
 
 ## Documentation build
 

@@ -32,8 +32,7 @@ A cell is **active** on a UTC day if at least one valid detection from the chose
 
 - **MODIS series** = Terra + Aqua. Their occupied cells are merged, so a cell seen by both is counted once.
 - **VIIRS series** = NOAA-20 only. S-NPP and NOAA-21 are deliberately **not** part of this comparison.
-- All confidence levels and detection types are kept. There is no mask for industrial heat sources, so this is
-  a measure of *thermal detections*, not strictly of wildfires.
+- All confidence levels and detection types are kept.
 
 ### Units
 
@@ -89,9 +88,19 @@ the exact rectangle. A point on the boundary between two neighbouring regions is
 **one** of them, never both, so adjacent regions can be added without double counting. For rectangles that
 already lie on grid lines, the two methods give identical numbers.
 
-Regions are rectangles, not administrative borders. "Ukraine" in `/regions` is the box
-`[22.1, 44.3, 40.2, 52.4]` (west, south, east, north), which also covers parts of neighbouring countries.
-A box may not cross the antimeridian (±180°).
+### Regions with a real border
+
+A ready-made region that has a `boundary` in `config.REGIONS` (Ukraine, Argentina, Australia, California, Amazonas,
+Siberia) is counted by the **real country or state border** (Natural Earth 1:10m, `geodata/boundaries.geojson`), not by
+its rectangle. Its `bbox` in `/regions` (for example `[22.1, 44.3, 40.2, 52.4]` for Ukraine) is only the view the
+map zooms to; it also covers parts of neighbouring countries, which are **not** counted. In the `area` object of a
+response, `bbox` is the part of the grid the border touches.
+
+The border is tested detection by detection (`geo.py`): a cell the border passes through is active for the region only
+if at least one of its detections lies inside, and its counts include only those detections. `/regions` reports how
+each region is counted in its `boundary` field (`border`, `border_part`, `rectangle` or `world`).
+
+`central_africa` and every own rectangle are plain rectangles. A rectangle may not cross the antimeridian (±180°).
 
 ## Calendar levels
 

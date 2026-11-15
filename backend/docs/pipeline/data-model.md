@@ -35,7 +35,8 @@ A named geographic extent that was requested from NASA (`world`, or a bounding b
 
 !!! warning "Scope is not region"
     A *scope* describes what was **downloaded**. A *region* in the API (`/regions`) describes what a user
-    **looks at** and is just a rectangle. The FireSync API no longer reads scopes: it uses its own database.
+    **looks at**: a rectangle or, for most regions, a real country or state border (`boundary` in `config.REGIONS`).
+    The FireSync API no longer reads scopes: it uses its own database.
 
 ### `availability`
 

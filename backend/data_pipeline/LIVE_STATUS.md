@@ -75,7 +75,7 @@ The filter has already been added to `Store`: `observations(..., bbox=(22, 44, 4
 `scope_id="world"` are used. This is a rectangle, not an exact administrative border.
 Sasha maps the frontend's region identifiers to their coordinates.
 The storage methods: `observations`, `daily_counts`, `list_windows`, `status`.
-The description and other examples are in README.md.
+The description and other examples are in the repository README.md.
 
 On another computer `.env` must be set up separately. The database itself is not passed through
 ordinary Git: `var/` is excluded. To pass SQLite while a loader is running, use the

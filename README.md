@@ -23,11 +23,14 @@ FireSync addresses this by:
 ## Features
 
 - **Regional exploration**: choose a region, month and day; inspect the calendar and both sensor layers.
+- **Real borders**: Ukraine, Argentina, Australia, California, Amazonas and Siberia are counted by their real country or state border, not by a rectangle.
+- **Area & dates**: analyse a region or your own rectangle (typed or drawn on the map) over any period, see it on the map and download the numbers, the detections and the chart.
 - **Daily calendar**: active 0.1° cells per UTC day for MODIS and VIIRS, with 0–4 color levels and a count of cells seen by both.
 - **Monthly and year-by-year views**, with completeness (`complete` / `partial` / `missing`) per month.
 - **Map layer**: GeoJSON of active cells, most active first.
 - **Charts**: monthly activity, area with active fire, Fire Radiative Power, trend and anomaly heatmap.
-- **CSV export** of selected detections (streamed, up to 31 days).
+- **CSV and PNG export**: selected detections as CSV (streamed, up to 31 days), the numbers behind each chart as CSV and every chart as an image.
+- **Sync status**: the website shows whether the NASA data is up to date, and each day says why it has no value (downloading, not published by NASA, no observations).
 - **Harmonization experiment** with a chronological train/holdout split.
 - **Automatic updates**: new NASA days are downloaded in the background every 3 hours, and only the changed months are rebuilt.
 - **Fast**: a precomputed cell index makes a world calendar for one month take ~0.25 s instead of ~28 s.
@@ -38,16 +41,18 @@ Open the landing page at `/` and go to **Explore** (`/explore`). The screen has 
 
 ### 1. Select the context
 
-- Use the **Region**, **Year** and **Month** drop-downs at the top. Changing the region zooms the map to it and draws a dashed outline (the world view has none).
-- The **Burning activity** calendar on the left shows the chosen month, one cell per day. Colored days had fire activity, grouped into high (turquoise), medium (blue) and low (dark). A day with no fill had no detections, and a dimmed, unclickable day has **no data** (it was not loaded, which is different from zero fires).
+- Use the **Region**, **Year** and **Month** drop-downs at the top. Changing the region zooms the map to it and draws its outline: the real border where the region has one, otherwise a dashed rectangle (the world view has none).
+- The **Burning activity** calendar on the left shows the chosen month, one cell per day. Colored days had fire activity, grouped into high (turquoise), medium (blue) and low (dark). A day with no fill had no detections, and an unclickable day has **no data** (it was not loaded, which is different from zero fires). The legend says why: *Downloading* (striped: NASA has the day and FireSync is still fetching it), *Not published* (struck through: NASA does not offer it yet) or *No observations*. A small dot under the number marks a partial day (one sensor still to come, or NASA is still adding passes).
+- The pill above the calendar shows the state of the NASA synchronisation ("NASA data up to date" or how many days are left); hover it for the last sync and the last error.
 - Hover a day to see its active-cell count and the MODIS and VIIRS values.
-- **Click a day** to show only that day on the map. Click it again, or press **Show whole month**, to go back to the full month. The line under the calendar tells you how many hotspots are currently on the map.
+- **Click a day** to show only that day on the map. Click it again, or press **Whole month**, to go back to the full month. The line under the calendar tells you how many hotspots are currently on the map.
 
 ### 2. Compare the records
 
 - Tick or untick **MODIS** and **VIIRS** to choose which sensor's detections appear on the map.
 - Drag the **Fire Radiative Power** slider to keep only hotspots within a chosen FRP range in MW. The right end, "500+ MW", means no upper limit.
 - Hover a map point to see its date, sensor (MODIS, VIIRS or both) and FRP.
+- Click a hotspot cell to open the **Hotspot Telemetry** card with that cell's individual detections (time, satellite, FRP, confidence), loaded from `/api/detections/`; the detections are drawn as dots at their own coordinates. A cell's position is its centre, never the location of a fire. In a region with a real border, only the detections inside the border are listed.
 - Pan by dragging and zoom with the **mouse wheel or the + / −** buttons at the bottom right.
 
 ### 3. Keep the evidence
@@ -58,7 +63,9 @@ Open the landing page at `/` and go to **Explore** (`/explore`). The screen has 
   - **FRP**: mean Fire Radiative Power per month (bars) and the strongest fire (dots).
   - **Trend & Anomaly**: a year × month heatmap. Switch between **Activity** and **Anomaly**, and read the yearly totals with a trend line underneath.
 - Clicking a bar, a month or a year inside any chart selects it, so the calendar and map jump to that period.
-- **CSV File** (bottom of the left panel) downloads the hotspots currently shown on the map: date, latitude, longitude, sensor and FRP. It respects your day, sensor and FRP filters. The button is disabled when no points are on the map.
+- Every chart window has **CSV** (the numbers behind it) and **PNG** (the chart as an image) buttons.
+- **Area & dates** (button in the top bar) opens a window for a region or your **own rectangle** over any period. Type the four coordinates or press **Draw on the map** and drag. Presets: selected month, last 30 days, selected year. **Analyse** shows the days with fire, MODIS and VIIRS cell-days and the peak day, a daily chart, and puts the active cells of that area and period on the map (up to 92 days; for a longer period the map keeps the selected month). Limits: 3660 days for a region, 366 for a rectangle. Downloads: *Daily numbers CSV*, *All detections CSV* (up to 31 days) and the chart as PNG.
+- **CSV File** (bottom of the left panel) downloads the real individual detections of the selected region for the selected month, or for the selected day, from `/api/export/`. It respects the day and sensor selection; the Fire Radiative Power slider only filters the map, not the file. In demo mode (no backend) it builds a file from the mock hotspots instead. The button is disabled when no points are on the map.
 
 ### Reading what you see
 
@@ -87,7 +94,7 @@ On Aug 12 there were 5 MODIS cells and 7 VIIRS cells, with 5 cells seen by both.
 | VIIRS × 0.334 | **34.5** |
 | Training-mean baseline | 46.6 |
 
-Absolute error drops, but holdout R² is only **0.014**: the factor fixes the *level* difference and does not explain day-to-day variation. Ten adjacent days of one August do not show the factor transfers to other months, regions or seasons, so automatic global application is disabled.
+Absolute error drops, but holdout R² is only **0.014**: the factor fixes the *level* difference and does not explain day-to-day variation. Ten adjacent days of one August do not show the factor transfers to other months, regions or seasons, so no factor is applied globally: a region's factor is used only when it beat both benchmarks on its held-out days.
 
 ## Repository layout
 
@@ -101,7 +108,10 @@ FireSync/
 │   ├── importer.py          archive CSV (2000–2025) → database, once
 │   ├── updater.py           NASA FIRMS API → database, in the background
 │   ├── analytics.py         color levels, harmonization, anomalies
+│   ├── geo.py               real country/state borders for the region filter
 │   ├── config.py            paths, regions, update settings, limits
+│   ├── geodata/             boundaries.geojson (Natural Earth 1:10m borders)
+│   ├── tools/               build_boundaries.py (rebuilds geodata/boundaries.geojson)
 │   ├── data/                firesync.sqlite3 + raw/NASA_FIRMS_2000_2025.csv (not in git)
 │   ├── tests/               tests on a generated archive in the real format
 │   ├── deploy/              setup_server.sh, systemd units (API and website), nginx config, optional cron, update script
@@ -112,7 +122,7 @@ FireSync/
 └── run.py                   starts the backend and the website together
 ```
 
-`backend/_old/` holds earlier versions of some files and is local only. It contains the former `grid_index.py` and `db.py`, which read the teammate's database and are no longer needed.
+`backend/_old/` holds earlier versions of some files and is local only. It contains the former `config.py`, `db.py` and `main.py`, which read the teammate's database and are no longer needed.
 
 The teammate's database `backend/data_pipeline/var/fires.sqlite3` (~3 GB) is no longer used by the API. It can be deleted unless it is needed for the pipeline's own commands.
 
@@ -136,7 +146,7 @@ NASA FIRMS API ──(updater.py, every 3 h in the background)──► data/fir
 | Database size | **≈ 3 GB** (about 11 bytes per detection) |
 | Archive import | ≈ 10 minutes, can be interrupted and resumed |
 | New NASA data | downloaded automatically in the background every 3 hours |
-| Tests | 45 for the backend (52 more for the pipeline package), with no key, no network and no real database |
+| Tests | the backend suite (`python -m pytest` prints the exact count) plus 52 for the pipeline package, with no key, no network and no real database |
 
 All detections of one UTC day and sensor are stored as one compressed block, and per-region daily and monthly totals are precomputed, so the calendar answers in milliseconds.
 
@@ -173,7 +183,7 @@ The key is read from `data_pipeline/.env` (`FIRMS_MAP_KEY`) and **never leaves i
 - **MODIS** = Terra + Aqua (occupied cells merged). **VIIRS** = NOAA-20 only.
 - **SP over NRT**: one product per day and sensor — final (SP) data when NASA has it, otherwise near-real-time; NRT is replaced by SP later, never added to it.
 - **Missing ≠ zero**: `null` / `"status": "missing"` means no data for that day; `0` means data exists and there were no fires. An incomplete month is `null` (the `*_partial` fields show what is available).
-- **Regions are whole cells**: rectangles are expanded outward to grid lines, so adjacent regions never double count.
+- **Regions**: a ready-made region is counted by its real country or state border where one is configured (`geo.py`; `central_africa` and `world` use no border). Rectangles, including your own, are expanded outward to whole 0.1° grid lines, so adjacent regions never double count.
 - **Self-updating**: the API downloads new NASA days in the background and rebuilds only the changed months.
 - **Verified**: the tests load the same rows with the pipeline's own code and compare its `grid_calendar()` with ours day by day; the import was checked against the raw CSV.
 
@@ -207,7 +217,7 @@ Open <http://127.0.0.1:3000/explore> (API docs: <http://127.0.0.1:8000/docs>).
 ### Requirements
 
 - Python **3.11+**
-- Node.js (for the website)
+- Node.js **20.9 or newer** (for the website; Next.js 16 needs it)
 - The database `backend/data/firesync.sqlite3` (~3 GB, **not in git**): copy it from a teammate, or import it from the archive CSV (`python importer.py`, about 10 minutes). Copying the ready-made database is faster than importing the 50 GB CSV again.
 - A free [NASA FIRMS MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/) in `backend/data_pipeline/.env`, needed **only** for the automatic updates.
 
@@ -278,12 +288,14 @@ fire-calendar/
 │   ├── ui/                   index.tsx (Section, Card, Button, Select, Stat, Placeholder, ...), Checkbox, FloatingWindow, RangeSlider
 │   ├── layout/               Header, Footer
 │   └── explore/              Explorer (the page logic), YearCalendar, DayCalendar, DayStrip,
-│                             ActivityChart, BarChart, MonthlyChart, FireMap, legends
+│                             ActivityChart, BarChart, DailyChart, FireMap, HotspotCard,
+│                             RangeReport ("Area & dates"), DownloadButtons (CSV / PNG), legends
 ├── lib/
 │   ├── api.ts                API requests / mocks, CSV export
 │   ├── useApi.ts             data-loading hook
 │   ├── mock.ts               test data
 │   ├── colors.ts             color scales for the data (calendar, map)
+│   ├── download.ts           saves a chart as a PNG image
 │   └── site.ts               site name and tagline
 └── types/api.ts              API response types
 ```
@@ -296,7 +308,7 @@ The dark theme from the design is already in place; step 5 lists what is still m
 2. Buttons, cards and fields: `components/ui/index.tsx`, which every page uses.
 3. Header and footer: `components/layout/`.
 4. Data colors (heat scale, MODIS/VIIRS): `lib/colors.ts`.
-5. Still waiting for content from the design: the hero image on the landing page (`app/page.tsx`) and the chart colors marked `TODO` in `components/explore/MonthlyChart.tsx`.
+5. Chart colors: the sensor lines of the monthly activity chart are set in `components/explore/ActivityChart.tsx`. Still waiting for content from the design: the hero image on the landing page (`app/page.tsx`).
 
 ### NASA data
 
@@ -305,9 +317,10 @@ itself in the background (`updater.py`), using `FIRMS_MAP_KEY` from `backend/dat
 
 ```bash
 cd backend
-python updater.py --plan      # what would be downloaded
-python updater.py             # one update now
-python updater.py --status    # what is stored, what the last update did
+python updater.py --plan        # what would be downloaded
+python updater.py               # one update now
+python updater.py --until-done  # repeat runs until nothing is missing
+python updater.py --status      # what is stored, what the last update did
 ```
 
 The same information is available over HTTP: `GET /api/updates/` and `GET /status`.
@@ -328,11 +341,16 @@ The website uses these endpoints (`region`, `year`, `month`), in exactly the sha
 | `/api/calendar/?region=` | a "year × month" calendar: cell-days on the MODIS scale, the median per month, the harmonization factor and R² |
 | `/api/month/?region=&year=&month=` | the days of a month: active MODIS and NOAA-20 cells + the harmonized value |
 | `/api/monthly/?region=&year=` | 12 months: MODIS, VIIRS on the MODIS scale, area of occupied cells, mean and maximum FRP |
-| `/api/hotspots/?region=&year=&month=` | map points: one active 0.1° cell per day, which sensor saw it (MODIS / VIIRS / BOTH), FRP |
-| `/api/export/?region=&year=&month=` | CSV with the real individual detections |
+| `/api/hotspots/?region=&year=&month=[&day=][&sensor=][&limit=]` | map points: one active 0.1° cell per day, which sensor saw it (MODIS / VIIRS / BOTH), FRP |
+| `/api/export/?region=&year=&month=[&day=][&sensor=]` | CSV with the real individual detections |
 | `/api/updates/` | what is in the database and what the automatic update is doing |
+| `/api/sync/[?date_from=&date_to=]` | the state of the synchronisation with NASA FIRMS; with dates (up to 366 days) also the state of every day |
+| `/api/boundary/?region=` | the border a region is counted by, as a GeoJSON feature (for drawing it on the map) |
+| `/api/detections/?region=&date=[&cell=][&sensor=]` | the individual detections of one UTC day inside the region's border, optionally for one 0.1° cell; paged |
 
-The regions the frontend uses (`world`, `ukraine`, `argentina`, `california`, `amazonas`) exist in `config.REGIONS` with the same rectangles, so the calendar counts exactly what the map draws.
+The "Area & dates" window of the website also calls the general endpoints below (`/calendar`, `/cells`, `/points`, `/export.csv`).
+
+The regions the frontend uses (`world`, `ukraine`, `argentina`, `california`, `amazonas`) exist in `config.REGIONS`. The same border is used for the calendar, the monthly statistics, the map cells, the detections and the CSV, so the calendar counts exactly what the map draws; `bbox` is only the view the map zooms to.
 
 ### General (`main.py`)
 
@@ -340,7 +358,7 @@ The regions the frontend uses (`world`, `ukraine`, `argentina`, `california`, `a
 |---|---|
 | `/health` | liveness check |
 | `/status` | what is stored (and for which dates), archive import, NASA update state |
-| `/regions` | ready-made regions (world, ukraine, argentina, california, amazonas, central_africa, siberia, australia) |
+| `/regions` | ready-made regions (world, ukraine, argentina, california, amazonas, central_africa, siberia, australia), each with how it is counted (`boundary`: real border, border cut by a rectangle, rectangle or world) |
 | `/calendar` | **per day**: daily active cells for MODIS and VIIRS, levels 0–4, shared cells |
 | `/calendar/monthly` | **per month**: monthly aggregation with completeness, area and FRP |
 | `/cells` | GeoJSON map layer of active cells (up to 92 days) |
@@ -367,8 +385,10 @@ Errors always have the form `{"error": "..."}` with status 400, 422, 503 or 500.
 |---|---|---|
 | `FIRMS_MAP_KEY` | none | NASA key (in `data_pipeline/.env`), only for the automatic updates |
 | `FIRESYNC_DB_PATH` | `data/firesync.sqlite3` | the database |
+| `FIRESYNC_ARCHIVE_CSV` | `data/raw/NASA_FIRMS_2000_2025.csv` | the archive file `importer.py` reads by default |
 | `FIRESYNC_AUTO_UPDATE` | `1` | `0` turns the background NASA updates off |
 | `FIRESYNC_UPDATE_HOURS` | `3` | hours between update runs |
+| `FIRESYNC_UPDATE_START_DATE` | `2026-01-01` | first day the NASA API is responsible for (2000–2025 always comes from the archive) |
 | `FRONTEND_URLS` | `http://localhost:3000,http://127.0.0.1:3000` | comma-separated CORS origins |
 
 All update limits (requests per run, quota reserve, response size, database size, free disk) are listed in
@@ -380,11 +400,96 @@ Regions and request limits live in `backend/config.py`.
 
 ```bash
 cd backend
-python -m pytest                                   # 45 tests, no key, no network, no real database
+python -m pytest                                   # no key, no network, no real database
 
 cd data_pipeline
 python -m unittest discover -s tests -v            # pipeline tests
 ```
+
+## Data pipeline package (`fires_data`)
+
+`backend/data_pipeline/` is the path **NASA API → response validation → SQLite → reading from Python**. It does not depend on FastAPI and uses only the Python 3.11+ standard library. The FireSync backend uses its client, CSV parsing, grid calculation and calibration code; the API itself reads `data/firesync.sqlite3`, not the pipeline's own database `data_pipeline/var/fires.sqlite3`. The old user CSV files and the archives from the NASA website are not used by the pipeline: CSV here is the format of the HTTP response of the Area API.
+
+### What the package does
+
+- Finds out the real availability of products through the NASA API (no dates are invented).
+- Supports MODIS, VIIRS S-NPP, NOAA-20 and NOAA-21, SP and NRT, for the whole world or a rectangle.
+- Splits history into requests of 1–5 days, saves progress and continues after a stop.
+- Stores the satellite and the version of each row. Terra and Aqua are not mixed under one name.
+- Atomically replaces a daily snapshot. Corrected FRP/confidence values and temporary records that disappeared do not turn into extra observations. An error never deletes the previous snapshot.
+- Prefers SP over NRT when reading.
+- Provides functions for reading observations and daily counts, the common-grid calendar and a separate calibration experiment.
+
+### Setup and first load
+
+Run the commands from `backend/data_pipeline/`, as `python -m fires_data <command>` or, after `pip install -e ./data_pipeline`, as `fires-data <command>`. Get a free [MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/), copy `.env.example` to `.env` and fill it in. Never commit `.env` or paste the key in chat; the module reads the file itself (no dotenv library). Environment variables take priority over `.env`, and a relative `FIRMS_DB_PATH` is resolved from the folder of the `.env` file.
+
+```text
+FIRMS_MAP_KEY=your_real_key
+FIRMS_DB_PATH=var/fires.sqlite3
+```
+
+```bash
+python -m fires_data init            # create the database, keeps existing data
+python -m fires_data doctor          # local configuration check, never prints the key
+python -m fires_data availability    # the date range NASA offers for each product
+python -m fires_data plan --area world --recent-days 1 --sources MODIS_NRT VIIRS_NOAA20_NRT
+python -m fires_data sync --area world --recent-days 1 --sources MODIS_NRT VIIRS_NOAA20_NRT --max-requests 2
+python -m fires_data status
+```
+
+`--recent-days 1` is yesterday (UTC). If NASA does not report availability for a needed day, `plan` shows it.
+
+### Commands and options
+
+| Command | Contacts NASA? | Purpose |
+|---|---|---|
+| `init` | no | Create the schema and the `world` scope. |
+| `doctor` | no | Check the local configuration. |
+| `availability` | yes | Fetch and cache the date range of each product. |
+| `plan` | yes (or `--cached`) | Preview the daily slices a request would download. |
+| `sync` | yes | Download, validate and save the slices. |
+| `status` | no | Database contents and the last ten jobs. |
+| `observations` | no | Print stored detections as JSON. |
+| `calendar` | no | Daily common-grid report from the local database. |
+| `calibrate` | no | The MODIS/VIIRS scaling experiment. |
+
+`plan` and `sync` take exactly one of `--from/--to`, `--recent-days N` (1–31, ending yesterday; `--include-today` adds the incomplete current day) or `--all-history`. Other options: `--area world` or `--bbox W S E N` (west south east north, no antimeridian crossing), `--scope-id`, `--scope-name`, `--sources` (`auto` picks SP or NRT per family and day, or codes such as `MODIS_SP`, `VIIRS_NOAA20_NRT`), `--refresh`, `--refresh-recent-days N` (default 3). `sync` adds `--batch-days 1..5` (default 1), `--max-requests N` (default 20, `0` unlimited), `--min-interval` (1.0 s), `--quota-reserve` (100) and `--min-free-gb` (30). Exit codes: `0` completed, `1` error, `2` paused (request budget or disk reserve; run again to continue), `130` Ctrl+C (finished slices are kept).
+
+Loading history: always preview first with `python -m fires_data plan --area world --all-history`, then load in bounded portions, for example `sync --area world --all-history --batch-days 5 --max-requests 100`; repeating the command continues where it stopped. A whole-world archive is hundreds of gigabytes, so for demos load one to three regions with `--bbox`. Keeping data fresh: `sync --area world --recent-days 3 --include-today --sources MODIS_NRT VIIRS_NOAA20_NRT VIIRS_NOAA21_NRT --max-requests 20`. Do not run several syncs of the same area at once. For the FireSync database the backend's `updater.py` does this automatically (see [NASA data](#nasa-data)).
+
+### Reading from Python
+
+```python
+from datetime import date
+from fires_data import Store, load_settings, grid_calendar, calibrate_calendar
+
+store = Store(load_settings().db_path)
+rows = store.observations("world", date(2024, 8, 1), date(2024, 8, 1),
+                          bbox=(22, 44, 41, 53), limit=1000, offset=0)
+report = grid_calendar(store, "world", date(2024, 8, 1), date(2024, 8, 31), bbox=(22, 44, 41, 53))
+experiment = calibrate_calendar(report, split_date=date(2024, 8, 22))
+```
+
+- `observations` returns UTC time, coordinates, instrument, satellite, FRP, confidence, version and more, in pages (default 1000). Some numeric fields can be `None`; that is not zero power. `BOTH` cannot be assigned to a single record.
+- Other methods: `daily_counts`, `list_scopes`, `list_windows`, `status`, `list_jobs`, `get_job`. Connections are created inside each method and are not shared between threads.
+- Each read selects one `scope_id` (the world scope, with `bbox` for a rectangle). Overlapping scopes must never be added together. A frontend region id is not a scope id.
+- `grid_calendar` gives the daily series of the two instruments on the 0.1° grid (see GRID_METHOD.md); a day that is not loaded is `status: missing` / `null`, a loaded empty day is `0`. A call is limited to 366 days and recomputes from the current database every time. On the full pipeline database a world month took about 28 s, which is why the API uses its own precomputed index.
+- `calibrate_calendar` fits a coefficient only on the dates before `split_date` and checks it on the rest (see CALIBRATION_METHOD.md). Statuses: `improved_on_holdout`, `not_improved`, `insufficient_data`. The result is experimental (`apply_automatically=false`).
+- A successful HTTP 200 is not enough: the response is checked as real CSV. A header with no rows means zero detections; HTML, error text and an empty body never overwrite data. Zero detections do not prove there was no fire, and a downloaded response does not prove full satellite coverage.
+
+NASA's WMS/WMS-Time layers provide map images; this module saves numeric observations through the Area API.
+
+### Pipeline files
+
+- `fires_data/client.py` — calls to NASA and the response size limit.
+- `fires_data/parsing.py` — CSV validation and parsing.
+- `fires_data/schema.sql`, `store.py` — the SQLite schema and storage operations.
+- `fires_data/service.py` — planning, loading, updates and progress.
+- `fires_data/analytics.py`, `calibration.py` — the grid calendar and the scaling experiment.
+- `fires_data/cli.py` — the commands.
+
+Official documents: [Area API](https://firms.modaps.eosdis.nasa.gov/api/area/), [product availability](https://firms.modaps.eosdis.nasa.gov/api/data_availability/), [MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/).
 
 ## Documentation
 
@@ -429,11 +534,11 @@ Details: `backend/docs/operations/deployment.md`.
 
 ## Limitations
 
-- Counts are **thermal detections on a 0.1° grid**, not fires and not burned area; there is no mask for industrial heat sources.
+- Counts are **thermal detections on a 0.1° grid**, not fires and not burned area.
 - The harmonization factor is experimental: it is fitted per region on the first two thirds of the paired days (MODIS + NOAA-20, 2018 onwards) and checked on the last third. It fills MODIS gaps only when it beats both benchmarks on the held-out days. It is not a NASA standard.
 - The archive export contains almost no offshore detections (NASA `type` 3); data from the API includes them (about 0.3 % of MODIS detections).
 - VIIRS S-NPP and NOAA-21 are not stored: the VIIRS series is NOAA-20 only.
-- Regions are rectangles, not administrative borders, and cannot cross the antimeridian.
+- Ukraine, Argentina, Australia, California, Amazonas and Siberia follow real borders (Natural Earth 1:10m). `central_africa` and any custom rectangle use plain rectangles, which cannot cross the antimeridian.
 - The website's yearly total and trend count only years whose 12 months are all complete, so the current year is left out until it ends.
 
 ## Designed for

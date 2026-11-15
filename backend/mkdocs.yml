@@ -65,6 +65,7 @@ nav:
       - frontend_api: reference/frontend_api.md
       - store: reference/store.md
       - reports: reference/reports.md
+      - geo: reference/geo.md
       - importer: reference/importer.md
       - updater: reference/updater.md
       - analytics: reference/analytics.md

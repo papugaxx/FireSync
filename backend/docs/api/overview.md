@@ -32,7 +32,7 @@ Choose **one** of three ways to select an area:
 
 | Option | Parameters | Result |
 |---|---|---|
-| Ready-made region | `region=ukraine` | A named rectangle from [`/regions`](endpoints.md#get-regions) |
+| Ready-made region | `region=ukraine` | A named region from [`/regions`](endpoints.md#get-regions), counted by its real country/state border where one is configured, otherwise by its rectangle |
 | Custom rectangle | `west`, `south`, `east`, `north` | Your own box. **All four** are required |
 | Nothing | (none) | The whole world |
 
@@ -45,6 +45,9 @@ Rules:
 - A custom rectangle is computed from the stored detections, so its period is limited to 366 days.
 - The rectangle is expanded outward to whole 0.1° cells. Responses return both `requested_bbox` and the
   `bbox` that was actually computed. See [Grid and calendar](../concepts/grid-and-calendar.md#regions-are-whole-cells).
+- For a ready-made region with a real border, detections outside the border are not counted, even inside the
+  region's rectangle (its `bbox` in `/regions` is only the view the map zooms to). In the `area` object of a response,
+  `bbox` is then the part of the grid the border touches. See [Region borders](endpoints.md#region-borders).
 
 Every response that takes an area includes an `area` object. `requested_bbox` is `null` for a ready-made region and
 holds your own rectangle otherwise:
@@ -123,6 +126,8 @@ Limits protect the server from heavy requests. They live in `config.py`.
 | `/export.csv` | 31 days | At most 1 000 000 rows (streamed) |
 | `/api/hotspots/` | one month | At most 10 000 cell-days; strongest per day kept, `truncated` and `total` |
 | `/api/export/` | one month or one day | At most 1 000 000 rows |
+| `/api/detections/` | one day (`date` is required) | At most 5000 detections per page (`limit`, `offset`) |
+| `/api/sync/` | up to 366 days when `date_from`/`date_to` are given | Computed from the database only; NASA is never asked |
 | `/anomaly` | n/a (uses a year and month) | Ready-made region only; needs at least 3 complete earlier years |
 
 Exceeding a limit returns `400` with a message that states the maximum.
