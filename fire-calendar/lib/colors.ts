@@ -23,6 +23,7 @@ export function anomalyColor(value: number | null, med: number) {
   return ANOMALY_RAMP[idx];
 }
 
-export const SENSOR_COLORS = { MODIS: "#3b82f6", VIIRS: "#f97316", BOTH: "#a855f7" } as const;
+// Same colors as the MODIS / VIIRS checkboxes and chart lines (see --color-modis / --color-viirs in globals.css)
+export const SENSOR_COLORS = { MODIS: "#f39314", VIIRS: "#ffd60a", BOTH: "#a855f7" } as const;
 
 export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

@@ -8,6 +8,7 @@ import { Button, Field, Panel, Placeholder, Select, Toggle } from "@/components/
 import FloatingWindow from "@/components/ui/FloatingWindow";
 import RangeSlider from "@/components/ui/RangeSlider";
 import Checkbox from "@/components/ui/Checkbox";
+import { SENSOR_COLORS } from "@/lib/colors";
 import DayCalendar, { DAY_LEVELS } from "./DayCalendar";
 import ActivityChart from "./ActivityChart";
 import BarChart, { linearTrend } from "./BarChart";
@@ -39,6 +40,8 @@ export default function Explorer() {
   const [sel, setSel] = useState({ year: 2024, month: 8 });
   const [day, setDay] = useState<string | null>(null); // selected day, or the whole month
   const [sensors, setSensors] = useState({ modis: true, viirs: true });
+  // exactly one sensor ticked → the telemetry card asks the backend only for that sensor
+  const onlySensor = sensors.modis !== sensors.viirs ? (sensors.modis ? "MODIS" : "VIIRS") : undefined;
   const [frp, setFrp] = useState<[number, number]>([0, FRP_MAX]);
 
   // --- windows ---
@@ -206,7 +209,7 @@ export default function Explorer() {
     <section className="relative lg:h-[calc(100dvh-8.5rem)] lg:min-h-[640px] lg:overflow-hidden">
       {/* ===== Map ===== */}
       <div className="h-[55vh] lg:absolute lg:inset-0 lg:h-auto">
-        <FireMap region={region} hotspots={points} />
+        <FireMap region={region} hotspots={points} sensor={onlySensor} />
       </div>
 
       {/* ===== Filters: Region / Year / Month ===== */}
@@ -271,10 +274,22 @@ export default function Explorer() {
             <p className="mt-1 text-sm text-muted">Click a day to show it on the map</p>
           )}
 
-          {/* Sensors */}
-          <div className="mt-3 flex justify-center gap-10 border-y border-line py-3">
-            <Checkbox label="MODIS" color="#f39314" checked={sensors.modis} onChange={(v) => setSensors({ ...sensors, modis: v })} />
-            <Checkbox label="VIIRS" color="#ffd60a" checked={sensors.viirs} onChange={(v) => setSensors({ ...sensors, viirs: v })} />
+          {/* Sensors + what the map colors mean */}
+          <div className="mt-3 border-y border-line py-3">
+            <div className="flex justify-center gap-10">
+              <Checkbox label="MODIS" color="#f39314" checked={sensors.modis} onChange={(v) => setSensors({ ...sensors, modis: v })} />
+              <Checkbox label="VIIRS" color="#ffd60a" checked={sensors.viirs} onChange={(v) => setSensors({ ...sensors, viirs: v })} />
+            </div>
+            {/* what the colors of the map cells mean */}
+            <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-muted">
+              {(["MODIS", "VIIRS", "BOTH"] as const).map((k) => (
+                <span key={k} className="inline-flex items-center gap-1.5">
+                  <span className="h-3 w-3 rounded-sm" style={{ background: SENSOR_COLORS[k] }} />
+                  {k === "BOTH" ? "Both" : k}
+                </span>
+              ))}
+              <span>· click a cell for details</span>
+            </div>
           </div>
 
           {/* FRP */}

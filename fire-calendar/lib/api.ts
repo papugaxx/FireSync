@@ -8,8 +8,9 @@ import type {
   MetaResponse,
   MonthlyResponse,
   MonthResponse,
+  PointsResponse,
 } from "@/types/api";
-import { mockCalendar, mockHotspots, mockMeta, mockMonth, mockMonthly } from "./mock";
+import { mockCalendar, mockHotspots, mockMeta, mockMonth, mockMonthly, mockPoints } from "./mock";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
 export const USING_DEMO_DATA = !API_URL;
@@ -51,6 +52,26 @@ export const api = {
     get<HotspotsResponse>(`/api/hotspots/?region=${region}&year=${year}&month=${month}`, () =>
       mockHotspots(region, year, month),
     ),
+
+  /**
+   * Individual NASA detections inside one 0.1° map cell on one day (backend `GET /points`).
+   * `lat`/`lon` is the cell centre as sent by /api/hotspots/. The box is shrunk slightly so the
+   * neighbouring cells, which share the edges, are not included.
+   */
+  cellPoints: (lat: number, lon: number, date: string, sensor?: "MODIS" | "VIIRS") => {
+    const h = 0.0499;
+    const q = new URLSearchParams({
+      west: (lon - h).toFixed(4),
+      south: (lat - h).toFixed(4),
+      east: (lon + h).toFixed(4),
+      north: (lat + h).toFixed(4),
+      date_from: date,
+      date_to: date,
+      limit: "100",
+    });
+    if (sensor) q.set("sensor", sensor);
+    return get<PointsResponse>(`/points?${q}`, () => mockPoints(lat, lon, date, sensor));
+  },
 
   /** link to the CSV; without a backend the CSV is built on the client (see downloadCsv) */
   exportUrl: (region: string, year: number, month: number) =>

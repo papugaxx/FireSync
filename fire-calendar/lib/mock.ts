@@ -1,6 +1,8 @@
 // Test data until a real API exists.
 // Generated deterministically (identical on every reload).
 import type {
+  Detection,
+  PointsResponse,
   CalendarResponse,
   HotspotsResponse,
   MetaResponse,
@@ -17,7 +19,7 @@ export const REGIONS: Region[] = [
   { id: "amazonas", name: "Amazonas, Brazil", bbox: [-9.8, -73.8, 2.2, -56.1] },
 ];
 
-export const YEARS = Array.from({ length: 25 }, (_, i) => 2001 + i); // 2001..2025
+export const YEARS = Array.from({ length: 25 }, (_, i) => 2000 + i); // 2000..2025
 
 // Seasonality: which month is the fire peak (0 = January) and how strong it is
 const SEASON: Record<string, { peak: number; second?: number; scale: number }> = {
@@ -115,10 +117,13 @@ export function mockHotspots(regionId: string, year: number, month: number): Hot
   const hotspots = Array.from({ length: count }, (_, i) => {
     const [clat, clon] = centers[Math.floor(r() * centers.length)];
     const roll = r();
+    // like the backend: one point per 0.1° cell, placed at the cell centre
+    const lat = cellCentre(clat + (r() - 0.5) * spread[0] * (isWorld ? r() * 2 : 1));
+    const lon = cellCentre(clon + (r() - 0.5) * spread[1] * (isWorld ? r() * 2 : 1));
     return {
       id: `${regionId}-${i}`,
-      lat: clat + (r() - 0.5) * spread[0] * (isWorld ? r() * 2 : 1),
-      lon: clon + (r() - 0.5) * spread[1] * (isWorld ? r() * 2 : 1),
+      lat,
+      lon,
       date: `${year}-${String(month).padStart(2, "0")}-${String(1 + Math.floor(r() * 28)).padStart(2, "0")}`,
       seenBy: (year < 2012 ? "MODIS" : roll < 0.15 ? "MODIS" : roll < 0.6 ? "VIIRS" : "BOTH") as
         | "MODIS"
@@ -157,4 +162,31 @@ export function mockMonthly(regionId: string, year: number): MonthlyResponse {
       frpMax: v === null ? null : Math.round(250 + r() * 900),
     })),
   };
+}
+
+/** Centre of the 0.1° cell that contains `v` (e.g. 46.23 → 46.25), same grid as the backend. */
+function cellCentre(v: number) {
+  return Math.round((Math.floor(v * 10) / 10 + 0.05) * 100) / 100;
+}
+
+/** Fake individual detections inside one cell (the backend answers this from NASA data). */
+export function mockPoints(lat: number, lon: number, date: string, sensor?: "MODIS" | "VIIRS"): PointsResponse {
+  const r = rng(hash(`pts-${lat}-${lon}-${date}`));
+  const n = 1 + Math.floor(r() * 5);
+  const points = Array.from({ length: n }, (): Detection => {
+    const isModis = sensor ? sensor === "MODIS" : r() < 0.35;
+    const hh = Math.floor(r() * 24), mm = Math.floor(r() * 60);
+    return {
+      acq_date: date,
+      acq_time: `${String(hh).padStart(2, "0")}${String(mm).padStart(2, "0")}`,
+      sensor: isModis ? "MODIS" : "VIIRS",
+      satellite: isModis ? (r() < 0.5 ? "Terra" : "Aqua") : "NOAA-20",
+      latitude: Math.round((lat - 0.05 + r() * 0.1) * 1e5) / 1e5,
+      longitude: Math.round((lon - 0.05 + r() * 0.1) * 1e5) / 1e5,
+      frp_mw: Math.round((2 + r() ** 2 * 120) * 100) / 100,
+      confidence: isModis ? String(Math.round(30 + r() * 70)) : ["l", "n", "h"][Math.floor(r() * 3)],
+      daynight: hh >= 6 && hh < 18 ? "D" : "N",
+    };
+  }).sort((a, b) => a.acq_time.localeCompare(b.acq_time));
+  return { count: points.length, has_more: false, points };
 }

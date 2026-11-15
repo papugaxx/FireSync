@@ -85,3 +85,26 @@ export interface MonthlyResponse {
     frpMax: number | null;
   }[];
 }
+
+/**
+ * One detection exactly as NASA reported it (backend `GET /points`).
+ * Used by the "Hotspot Telemetry" card when a map cell is clicked.
+ */
+export interface Detection {
+  acq_date: string; // YYYY-MM-DD, UTC
+  acq_time: string; // HHMM, UTC
+  sensor: Sensor;
+  satellite: string; // Terra, Aqua, NOAA-20
+  latitude: number;
+  longitude: number;
+  frp_mw: number | null;
+  /** MODIS: "0".."100" (percent); VIIRS: "l" | "n" | "h"; null if unknown */
+  confidence: string | null;
+  daynight: "D" | "N" | null;
+}
+
+export interface PointsResponse {
+  count: number;
+  has_more: boolean;
+  points: Detection[];
+}
