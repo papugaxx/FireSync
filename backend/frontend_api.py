@@ -12,13 +12,19 @@ ignores them); they carry details such as coverage, units and raw values.
     GET /api/hotspots/?region=&year=&month=   active 0.1° cells per day for the map
     GET /api/export/?region=&year=&month=     CSV with the individual detections
     GET /api/updates/                         state of the automatic NASA updates
+    GET /api/sync/                            which dates are complete / partial / pending / not offered by NASA
+    GET /api/boundary/?region=                the real border of a region (GeoJSON) for the map outline
+    GET /api/detections/?region=&date=        individual NASA detections (real coordinates), paged
 
 Units (all dates UTC):
   * a day value is the number of 0.1° cells where the sensor detected fire that day;
   * a month value is the sum over its days ("cell-days");
   * `harmonized` / calendar months are on the MODIS scale: MODIS where it observed,
     otherwise VIIRS NOAA-20 × k, but only if k was validated on held-out days;
-  * `null` means no data, 0 means data without fires; incomplete months are null.
+  * `null` means no data, 0 means data without fires; incomplete months are null;
+  * every day also has a `status` — complete | partial | pending | unavailable | no_data | not_imported —
+    so "no fires", "no observations" and "not downloaded yet" are never confused;
+  * a region with a real border (config.REGIONS "boundary") counts only detections inside it.
 
 To show real data, the frontend needs NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 in fire-calendar/.env.local (without it, it shows its built-in demo data).
@@ -32,6 +38,7 @@ import threading
 from collections import OrderedDict
 from contextlib import closing
 from datetime import date, datetime, timezone
+from itertools import islice
 from statistics import median
 from typing import Annotated, Literal
 
@@ -41,6 +48,7 @@ import numpy as np
 
 import analytics
 import config
+import geo
 import reports
 import store
 import updater
@@ -57,7 +65,9 @@ _cache, _cache_lock = OrderedDict(), threading.Lock()
 
 
 def _cached(conn, name, args, build):
-    key = (store.revision(conn), name, args)
+    # The answer changes with the data (revision), with what NASA offers (checked by every update)
+    # and with the date (what is "pending" or "updating" depends on today).
+    key = (store.revision(conn), store.get_meta(conn, "nasa_availability_checked_at"), _today(), name, args)
     with _cache_lock:
         if key in _cache:
             _cache.move_to_end(key)
@@ -150,6 +160,30 @@ def _harmonization_info(cal):
                             "training_mean_baseline": cal["baseline_mae"]}}
 
 
+def _first_sync_day(conn):
+    return min(updater.sync_start(conn, s) for s in store.SENSORS).isoformat()
+
+
+def _month_status(states, days, today, complete, some_data):
+    """
+    complete — every day has data; partial — some days have data; pending — nothing yet, but NASA has it;
+    future — the month has not begun; unavailable — NASA does not offer it; no_data — archive years without data.
+    """
+    if complete:
+        return "complete"
+    if days[0] > today:
+        return "future"
+    found = [states[d]["status"] for d in days if d in states]
+    if some_data or any(v in ("complete", "partial") for v in found):
+        return "partial"
+    if not found:                                     # archive years: decided by the stored days only
+        return "no_data"
+    for name in ("pending", "not_imported", "unavailable"):
+        if name in found:
+            return name
+    return "no_data"
+
+
 # ---------- Endpoints ----------
 
 @router.get("/meta/", summary="Regions and years")
@@ -162,7 +196,7 @@ def meta():
         else:
             west, south, east, north = info["bbox"]
             bbox = [south, west, north, east]          # the frontend's order: [south, west, north, east]
-        regions.append({"id": key, "name": info["name"], "bbox": bbox})
+        regions.append({"id": key, "name": info["name"], "bbox": bbox, "boundary": reports.boundary_info(key)})
     with _conn() as conn:
         coverage = store.coverage(conn)
     first = min((v["first_day"] for v in coverage.values()), default=None)
@@ -189,9 +223,12 @@ def calendar(region: str = "world"):
             first_year = int(min(v["first_day"] for v in coverage.values())[:4])
             last_year = int(max(v["last_day"] for v in coverage.values())[:4])
             today = _today().isoformat()
+            first_day = f"{first_year}-01-01"
+            states = updater.day_states(conn, date.fromisoformat(max(first_day, _first_sync_day(conn))),
+                                        date(last_year, 12, 31), _today())
             years = []
             for year in range(first_year, last_year + 1):
-                item = {"year": year, "months": [], "complete": [], "modis": [], "viirs": []}
+                item = {"year": year, "months": [], "complete": [], "status": [], "modis": [], "viirs": []}
                 for month in range(1, 13):
                     key = f"{year}-{month:02d}"
                     days = store.month_days(key)
@@ -199,6 +236,8 @@ def calendar(region: str = "world"):
                     complete = days[-1] < today and all(v is not None for v in values)
                     item["months"].append(sum(values) if complete else None)
                     item["complete"].append(complete)
+                    item["status"].append(_month_status(states, days, today, complete,
+                                                        any(v is not None for v in values)))
                     for sensor in store.SENSORS:
                         m = stored_months.get((key, sensor))
                         full = m is not None and m["loaded_days"] == len(days)
@@ -209,7 +248,7 @@ def calendar(region: str = "world"):
                 values = [y["months"][month] for y in years if y["months"][month] is not None]
                 medians.append(round(median(values)) if len(values) >= 3 else None)
             return {"region": region, "years": years, "median": medians,
-                    "harmonization": _harmonization_info(cal),
+                    "harmonization": _harmonization_info(cal), "boundary": reports.boundary_info(region),
                     "unit": "active cell-days per month on the MODIS scale",
                     "note": "Only complete months have a value; null means missing or incomplete data. "
                             "The median needs at least 3 complete years of that month."}
@@ -227,11 +266,14 @@ def month(region: str = "world", year: int = 2024, month: int = 8):
             cal = calibration(conn, region)
             k = cal["coefficient"] if cal["validated"] else None
             rows = store.region_day_rows(conn, region, first, last)
+            states = updater.day_states(conn, first, last, _today())
             days = []
             for d in store.month_days(f"{year}-{month:02d}"):
                 row = rows.get(d)
                 value, source = _harmonized(row, k)
-                days.append({"date": d,
+                state = states[d]
+                days.append({"date": d, "status": state["status"],
+                             "modis_state": state["modis"], "viirs_state": state["viirs"],
                              "modis": None if row is None else row["modis_cells"],
                              "viirs": None if row is None else row["viirs_cells"],
                              "harmonized": value, "harmonized_source": source,
@@ -241,10 +283,15 @@ def month(region: str = "world", year: int = 2024, month: int = 8):
                              "viirs_product": None if row is None else row["viirs_product"]})
             coverage = {ch: {"loaded_days": sum(1 for x in days if x[ch] is not None), "requested_days": len(days)}
                         for ch in ("modis", "viirs")}
+            coverage["days"] = {name: sum(1 for x in days if x["status"] == name)
+                                for name in ("complete", "partial", "pending", "unavailable", "no_data", "not_imported", "future")}
             return {"region": region, "year": year, "month": month, "days": days, "coverage": coverage,
                     "bbox": where["bbox"], "unit": "active 0.1° cells per UTC day",
+                    "boundary": where["boundary"],
                     "note": "modis and viirs are observed values (VIIRS = NOAA-20, not scaled); "
-                            "harmonized is on the MODIS scale. null = no data."}
+                            "harmonized is on the MODIS scale. null = no data; `status` says why: "
+                            "pending = NASA has the day, not downloaded yet; unavailable = NASA does not offer it "
+                            "(yet); no_data = no observations; partial = only one sensor, or NASA still adds passes."}
         return _cached(conn, "month", (region, year, month), build)
 
 
@@ -310,7 +357,7 @@ def hotspots(region: str = "world", year: int = 2024, month: int = 8, day: date 
             days = [day.isoformat()] if day else store.month_days(f"{year}-{month:02d}")
             per_day = {}
             for d in days:
-                cells = reports.day_cells(conn, d, where["cells"])
+                cells = reports.day_cells(conn, d, where)
                 if cells is None:
                     continue
                 if sensor:
@@ -327,18 +374,23 @@ def hotspots(region: str = "world", year: int = 2024, month: int = 8, day: date 
                     order = top[np.argsort(-c["frp_max"][top])]
                 else:
                     order = range(len(c["cell"]))
+                edge = (where["shape"].cell_class(c["cell"]) == geo.EDGE) if where["shape"] is not None else None
                 for i in order:
                     cell, mo, vi = int(c["cell"][i]), int(c["modis_obs"][i]), int(c["viirs_obs"][i])
                     fmax, fn = int(c["frp_max"][i]), int(c["frp_n"][i])
                     lat, lon = reports.cell_center(cell)
-                    points.append({"id": f"{d}-{cell}", "lat": lat, "lon": lon, "date": d,
+                    points.append({"id": f"{d}-{cell}", "kind": "cell", "cell": cell, "lat": lat, "lon": lon,
+                                   "cell_size_degrees": 0.1, "edge": bool(edge[i]) if edge is not None else False,
+                                   "date": d,
                                    "seenBy": "BOTH" if mo and vi else ("MODIS" if mo else "VIIRS"),
                                    "frp": fmax / 100 if fmax >= 0 else None,
                                    "frp_mean": round(int(c["frp_sum"][i]) / fn / 100, 2) if fn else None,
                                    "modis_observations": mo, "viirs_observations": vi})
             return {"region": region, "from": first.isoformat(), "to": last.isoformat(), "hotspots": points,
                     "total": total, "truncated": len(points) < total, "limit": limit,
-                    "unit": "active 0.1° cell per UTC day (cell centre); not individual fires",
+                    "unit": "active 0.1° cell per UTC day; lat/lon is the cell centre, not a fire location. "
+                            "Real detections: /api/detections/?region=&date=&cell=",
+                    "boundary": where["boundary"],
                     "note": (f"Showing the {len(points):,} strongest of {total:,} active cell-days."
                              if len(points) < total else "All active cell-days are included.")}
         def encoded():
@@ -400,4 +452,66 @@ def export(region: str = "world", year: int = 2024, month: int = 8, day: date | 
 def updates():
     with _conn() as conn:
         stored = store.summary(conn)
-    return {"stored": stored, "update": updater.status()}
+        sync = updater.sync_state(conn, _today())
+    return {"stored": stored, "sync": sync, "update": updater.status()}
+
+
+@router.get("/sync/", summary="Which dates are loaded, partial, waiting or not offered by NASA")
+@router.get("/sync", include_in_schema=False)
+def sync(date_from: date | None = None, date_to: date | None = None):
+    """
+    Without dates: the synchronisation summary (per sensor: first API day, counts, missing ranges,
+    last successful sync, last error). With dates (up to 366 days): also the state of every day.
+    Computed from the database only — NASA is never asked by this request.
+    """
+    with _conn() as conn:
+        result = updater.sync_state(conn, _today())
+        if date_from or date_to:
+            start, end = date_from or date_to, date_to or date_from
+            if end < start or (end - start).days >= 366:
+                raise ValueError("Give date_from ≤ date_to, at most 366 days apart.")
+            result["daily"] = [{"date": d, **v} for d, v in updater.day_states(conn, start, end, _today()).items()]
+    result["update"] = updater.status()
+    return result
+
+
+@router.get("/boundary/", summary="The real border of a region (GeoJSON) for the map")
+@router.get("/boundary", include_in_schema=False)
+def boundary(region: str, detail: Annotated[float, Query(ge=0, le=0.5, description="Simplify to this many degrees")] = 0.02):
+    """The border the region is counted by. A region without a border answers with its rectangle."""
+    where = reports.area(region)
+    shape = where["shape"]
+    if shape is None:
+        w, s_, e, n = where["bbox"]
+        rings = [[[w, s_], [e, s_], [e, n], [w, n], [w, s_]]]
+    else:
+        rings = shape.outline(detail)
+    return Response(json.dumps({"type": "Feature", "properties": {"region": region, **where["boundary"]},
+                                "geometry": {"type": "MultiPolygon", "coordinates": [[r] for r in rings]}},
+                               separators=(",", ":")), media_type="application/geo+json")
+
+
+@router.get("/detections/", summary="Individual NASA detections with their real coordinates")
+@router.get("/detections", include_in_schema=False)
+def detections(region: str = "world", date: date | None = None,
+               cell: Annotated[int | None, Query(ge=0, lt=1800 * 3600, description="Only this 0.1° cell (id from /api/hotspots/)")] = None,
+               sensor: Literal["MODIS", "VIIRS"] | None = None,
+               limit: Annotated[int, Query(ge=1, le=config.MAX_POINTS_PER_PAGE)] = 1000,
+               offset: Annotated[int, Query(ge=0)] = 0):
+    """
+    One day of a region (inside its real border), optionally only one 0.1° cell: every detection as
+    NASA reported it — latitude/longitude of the detection itself, UTC time, satellite, FRP, confidence.
+    """
+    if date is None:
+        raise ValueError("Give the day: date=YYYY-MM-DD.")
+    where = reports.area(region)
+    with _conn() as conn:
+        products = store.stored_days(conn, date, date)
+        rows = list(islice(reports.points(conn, where, date, date, sensor, cell), offset, offset + limit + 1))
+    more = len(rows) > limit
+    rows = rows[:limit]
+    for row in rows:
+        row["product"] = products.get((row["acq_date"], row["sensor"]))
+    return {"region": region, "date": date.isoformat(), "cell": cell, "count": len(rows), "offset": offset,
+            "has_more": more, "next_offset": offset + limit if more else None, "points": rows,
+            "unit": "individual satellite detections; latitude/longitude are the detection (pixel) centres"}

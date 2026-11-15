@@ -19,7 +19,9 @@ export const REGIONS: Region[] = [
   { id: "amazonas", name: "Amazonas, Brazil", bbox: [-9.8, -73.8, 2.2, -56.1] },
 ];
 
-export const YEARS = Array.from({ length: 25 }, (_, i) => 2000 + i); // 2000..2025
+// 2000 … the current year (demo only; with a backend the years come from /api/meta/)
+const NOW = new Date();
+export const YEARS = Array.from({ length: NOW.getUTCFullYear() - 1999 }, (_, i) => 2000 + i);
 
 // Seasonality: which month is the fire peak (0 = January) and how strong it is
 const SEASON: Record<string, { peak: number; second?: number; scale: number }> = {
@@ -71,7 +73,7 @@ export function mockCalendar(regionId: string): CalendarResponse {
     const yearFactor = 0.5 + r() * 1.1 + (r() < 0.12 ? 1.2 : 0); // occasionally an anomalous year
     const months = Array.from({ length: 12 }, (_, m) => {
       // there is no data for future months
-      if (year === 2025 && m > 9) return null;
+      if (year > NOW.getUTCFullYear() || (year === NOW.getUTCFullYear() && m >= NOW.getUTCMonth())) return null;
       return Math.round(monthWeight(regionId, m) * yearFactor * (0.6 + r() * 0.8));
     });
     return { year, months };
@@ -98,7 +100,7 @@ export function mockMonth(regionId: string, year: number, month: number): MonthR
     const modis = missing ? null : Math.round(base * burst * r() * 2);
     const viirs = year < 2012 ? null : Math.round((modis ?? base) * (2.2 + r()));
     const harmonized = modis ?? (viirs !== null ? Math.round(viirs / 2.6) : null);
-    return { date, modis, viirs, harmonized };
+    return { date, modis, viirs, harmonized, status: (missing ? "no_data" : "complete") as "no_data" | "complete" };
   });
   return { region: regionId, year, month, days };
 }
@@ -122,6 +124,7 @@ export function mockHotspots(regionId: string, year: number, month: number): Hot
     const lon = cellCentre(clon + (r() - 0.5) * spread[1] * (isWorld ? r() * 2 : 1));
     return {
       id: `${regionId}-${i}`,
+      kind: "cell" as const,
       lat,
       lon,
       date: `${year}-${String(month).padStart(2, "0")}-${String(1 + Math.floor(r() * 28)).padStart(2, "0")}`,

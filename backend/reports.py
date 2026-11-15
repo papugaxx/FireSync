@@ -42,6 +42,8 @@ METHOD = {
     "equal_area": False,
     "burned_area": False,
     "bbox_semantics": "whole 0.1-degree grid cells; the requested rectangle is expanded outward to grid lines",
+    "border_semantics": "regions with a real border count only detections inside it; a cell on the border is "
+                        "active for the region when at least one of its detections is inside",
     "interpretation": "Observed active cell-days, not unique fires or burned area; platform exposures differ.",
 }
 WORLD_BBOX = [-180.0, -90.0, 180.0, 90.0]
@@ -56,15 +58,31 @@ def area(region=None, bbox=None):
             raise ValueError(f"Unknown region '{region}'. See /regions for the list.")
         bbox = config.REGIONS[region]["bbox"]
         if bbox is None:
-            return {"region": region, "scope_id": region, "cells": None, "bbox": WORLD_BBOX, "requested_bbox": None}
+            return {"region": region, "scope_id": region, "cells": None, "shape": None,
+                    "boundary": {"kind": "world"}, "bbox": WORLD_BBOX, "requested_bbox": None}
     elif bbox is None:
-        return {"region": "world", "scope_id": "world", "cells": None, "bbox": WORLD_BBOX, "requested_bbox": None}
+        return {"region": "world", "scope_id": "world", "cells": None, "shape": None,
+                "boundary": {"kind": "world"}, "bbox": WORLD_BBOX, "requested_bbox": None}
     west, south, east, north = bbox
     if not (-180 <= west < east <= 180 and -90 <= south < north <= 90):
         raise ValueError("Bounds need west < east and south < north (longitude first, then latitude).")
-    cells = store.cell_range(bbox)
-    return {"region": region, "scope_id": region or "custom", "cells": cells,
+    cells, shape = store.region_area(region) if region is not None else (store.cell_range(bbox), None)
+    return {"region": region, "scope_id": region or "custom", "cells": cells, "shape": shape,
+            "boundary": boundary_info(region),
             "bbox": store.cells_to_bbox(cells), "requested_bbox": list(bbox)}
+
+
+def boundary_info(region):
+    """How a region is counted: by its real border, by a border cut by a rectangle, or by a rectangle."""
+    info = config.REGIONS.get(region) if region else None
+    if info is None:
+        return {"kind": "rectangle"}                 # an own west/south/east/north rectangle
+    if info["bbox"] is None:
+        return {"kind": "world"}
+    if not info.get("boundary"):
+        return {"kind": "rectangle"}
+    return {"kind": "border_part" if info.get("clip") else "border", "id": info["boundary"],
+            "source": "Natural Earth 1:10m"}
 
 
 def _days(start, end):
@@ -217,17 +235,22 @@ def monthly(conn, where, start, end):
             "months": months}
 
 
-def day_cells(conn, day, cells):
+def _summary(conn, day, sensor, where):
+    """Per-cell summary of a stored day inside an area (rectangle by cell, border by detection)."""
+    return store.area_cell_summary(conn, day, sensor, where["cells"], where.get("shape"), where["scope_id"])
+
+
+def day_cells(conn, day, where):
     """
-    Active cells of one day inside a cell range, both sensors merged (numpy arrays, sorted by cell):
+    Active cells of one day inside an area, both sensors merged (numpy arrays, sorted by cell):
     cell, modis_obs, viirs_obs, frp_max (MW × 100, -1 = no FRP), frp_sum (MW × 100), frp_n.
+    In a region with a real border only the detections inside the border are counted.
     """
     parts = {}
     for sensor in store.SENSORS:
-        s = store.day_cell_summary(conn, day, sensor)
+        s = _summary(conn, day, sensor, where)
         if s is not None:
-            mask = store.in_cells(s["cell"], cells)
-            parts[sensor] = {k: v[mask] for k, v in s.items()}
+            parts[sensor] = s
     if not parts:
         return None
     ids = np.unique(np.concatenate([p["cell"] for p in parts.values()]))
@@ -256,11 +279,11 @@ def map_cells(conn, where, start, end, step=1, limit=20_000):
     parts = {"block": [], "day": [], "mobs": [], "vobs": [], "mcell": [], "vcell": []}
     for number, day in enumerate(_days(start, end)):
         for sensor in store.SENSORS:
-            s = store.day_cell_summary(conn, day, sensor)
+            s = _summary(conn, day, sensor, where)
             if s is None:
                 continue
-            mask = store.in_cells(s["cell"], where["cells"])
-            ids = s["cell"][mask]
+            mask = np.ones(len(s["cell"]), dtype=bool)
+            ids = s["cell"]
             block = (ids // 3600 // step) * columns + (ids % 3600) // step
             parts["block"].append(block)
             parts["day"].append(np.full(len(block), number))
@@ -297,11 +320,11 @@ def detection_count(conn, where, start, end, sensor=None):
     return sum(int(r[f"{store.CHANNEL[s]}_obs"] or 0) for r in rows.values() for s in sensors)
 
 
-def points(conn, where, start, end, sensor=None):
+def points(conn, where, start, end, sensor=None, cell=None):
     """Individual detections day by day (a generator, so large exports stream)."""
     for day in _days(start, end):
         for s in ([sensor] if sensor else store.SENSORS):
-            yield from store.detections(conn, day, s, where["cells"])
+            yield from store.detections(conn, day, s, where["cells"], where.get("shape"), cell)
 
 
 def loaded_summary(conn):

@@ -51,9 +51,43 @@ and then every `FIRESYNC_UPDATE_HOURS` hours (3 by default), it:
 | Request limit, quota reserve, disk or size limit reached | The run stops with a reason; the next run continues |
 | One bad NASA answer | That day is skipped and retried by the next run |
 
-When a run stops at the request limit with work left over, the next run starts after 10 minutes instead of
-waiting the full interval. Catching up after the archive (2026-01-01 until today) takes about 640 requests and a
-few gigabytes of download; it happens over several runs.
+Responsibility is split by date: **2000–2025 comes only from the archive**; the API downloads from
+`FIRESYNC_UPDATE_START_DATE` (2026-01-01), or from the day after the archive if the archive reaches further.
+The start is a fixed day, not a moving window: in 2027 and later every missing day since 2026-01-01 is still
+planned, and no code changes are needed for a new year. Even if the database has no archive at all, nothing
+before the start date is asked from NASA (`updater.py --plan` then prints a warning and the database path).
+
+When a run stops early — the request limit, the NASA quota, several network failures in a row — everything
+stored so far is kept and the next run starts after `FIRESYNC_UPDATE_RETRY_MINUTES` (10) instead of the full
+interval, until no day is missing. A single timed-out or malformed day is skipped and counted as still to do.
+Catching up from 2026-01-01 takes about 640 requests and a few gigabytes; to do it at once:
+
+```bash
+python updater.py --until-done     # repeats runs until nothing is missing (waits after a failure)
+```
+
+### Sync state of every day
+
+From the database alone (NASA is never asked by a page view) every day and sensor has a state:
+
+| Day status | Meaning |
+|---|---|
+| `complete` | every sensor that observed the day is stored |
+| `partial` | one sensor stored, the other still to come — or NRT of the last days that NASA is still adding passes to |
+| `pending` | NASA offers the day; not downloaded yet |
+| `unavailable` | NASA does not offer it (yet) through the API — e.g. between the end of SP and the start of NRT |
+| `no_data` | archive years without observations (instrument outage) |
+| `not_imported` | archive years while the archive has not been imported |
+| `future` | the day has not happened yet |
+
+`GET /api/sync/` (also inside `/status` and `/api/updates/`) gives the summary — per sensor the archive's last
+day, the API's first day, counts, `pending_ranges` and `unavailable_ranges`, `last_success_at`,
+`last_complete_at` and `last_error`. With `date_from`/`date_to` it lists every day. `/api/month/` gives every day
+its `status`, `/api/calendar/` every month.
+
+If NASA's API leaves a gap (`unavailable_ranges` not empty for a past period), the official alternative is the
+FIRMS archive download (firms.modaps.eosdis.nasa.gov/download/): its CSV can be loaded with
+`python importer.py <file.csv>` — SP from the archive replaces NRT, never the other way round.
 
 The key is read from `data_pipeline/.env` (`FIRMS_MAP_KEY`). It never leaves the backend: it is not logged,
 stored in the database or returned by the API. NASA URLs in errors are replaced with fixed messages.

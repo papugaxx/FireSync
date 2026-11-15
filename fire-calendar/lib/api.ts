@@ -3,13 +3,16 @@
 // `python run.py` in the repository root sets it automatically; for `npm run dev` alone copy
 // .env.example to .env.local. While it is empty, the site shows the demo data from lib/mock.ts.
 import type {
+  BoundaryResponse,
   CalendarResponse,
   HotspotsResponse,
   MetaResponse,
   MonthlyResponse,
   MonthResponse,
   PointsResponse,
+  SyncResponse,
 } from "@/types/api";
+import type { Hotspot } from "@/types/api";
 import { mockCalendar, mockHotspots, mockMeta, mockMonth, mockMonthly, mockPoints } from "./mock";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
@@ -54,28 +57,26 @@ export const api = {
     ),
 
   /**
-   * Individual NASA detections inside one 0.1° map cell on one day (backend `GET /points`).
-   * `lat`/`lon` is the cell centre as sent by /api/hotspots/. The box is shrunk slightly so the
-   * neighbouring cells, which share the edges, are not included.
+   * The real NASA detections inside one 0.1° map cell on one day (backend `/api/detections/`),
+   * only those inside the region's border. Their coordinates are the detections themselves.
    */
-  cellPoints: (lat: number, lon: number, date: string, sensor?: "MODIS" | "VIIRS") => {
-    const h = 0.0499;
-    const q = new URLSearchParams({
-      west: (lon - h).toFixed(4),
-      south: (lat - h).toFixed(4),
-      east: (lon + h).toFixed(4),
-      north: (lat + h).toFixed(4),
-      date_from: date,
-      date_to: date,
-      limit: "100",
-    });
+  cellPoints: (region: string, cell: Hotspot, sensor?: "MODIS" | "VIIRS") => {
+    const q = new URLSearchParams({ region, date: cell.date, cell: String(cell.cell ?? ""), limit: "500" });
     if (sensor) q.set("sensor", sensor);
-    return get<PointsResponse>(`/points?${q}`, () => mockPoints(lat, lon, date, sensor));
+    return get<PointsResponse>(`/api/detections/?${q}`, () => mockPoints(cell.lat, cell.lon, cell.date, sensor));
   },
 
+  /** The border the region is counted by (null without a backend: the map draws the rectangle). */
+  boundary: (region: string) => get<BoundaryResponse | null>(`/api/boundary/?region=${region}`, () => null),
+
+  /** Which dates are loaded / still downloading (null without a backend). */
+  sync: () => get<SyncResponse | null>("/api/sync/", () => null),
+
   /** link to the CSV; without a backend the CSV is built on the client (see downloadCsv) */
-  exportUrl: (region: string, year: number, month: number) =>
-    API_URL ? `${API_URL}/api/export/?region=${region}&year=${year}&month=${month}` : null,
+  exportUrl: (region: string, year: number, month: number, day?: string | null, sensor?: "MODIS" | "VIIRS") =>
+    API_URL
+      ? `${API_URL}/api/export/?region=${region}&year=${year}&month=${month}${day ? `&day=${day}` : ""}${sensor ? `&sensor=${sensor}` : ""}`
+      : null,
 };
 
 export function downloadCsv(filename: string, rows: Record<string, unknown>[]) {

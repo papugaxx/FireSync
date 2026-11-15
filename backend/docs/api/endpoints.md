@@ -333,3 +333,42 @@ The fire-calendar website calls `/api/...` (see [Frontend](../development/fronte
 | `GET /api/hotspots/?region&year&month[&day][&sensor][&limit]` | active 0.1° cells per day with `seenBy` and FRP |
 | `GET /api/export/?region&year&month[&day][&sensor]` | CSV of the individual detections |
 | `GET /api/updates/` | stored data and the state of the automatic NASA update |
+
+
+## Region borders { #region-borders }
+
+Regions with a `boundary` in `config.REGIONS` are counted by the **real border** (Natural Earth 1:10m,
+`geodata/boundaries.geojson`), not by their rectangle — for the calendar, the monthly statistics, the map
+cells, `/api/detections/` and the CSV export alike. Each detection is tested (`geo.py`): cells completely
+inside or outside the border are decided at once, cells the border passes through are decided detection by
+detection. A border cell is active for a country only when one of its detections is inside; its counts
+include only those detections. `bbox` is now only the view the map zooms to.
+
+| Region | Counted by |
+|---|---|
+| ukraine, argentina, australia | country border (Ukraine in its internationally recognised borders) |
+| california, amazonas | state border |
+| siberia | Russia's border cut by the rectangle 90–140°E, 50–70°N |
+| central_africa | the rectangle (no border configured) |
+| world | everything |
+
+To add a border: set `"boundary": "country:<ISO3>"` or `"state:<ISO 3166-2>"` and run
+`python tools/build_boundaries.py`. Region tables are rebuilt automatically on the next start.
+
+## GET /api/boundary/?region= { #api-boundary }
+
+The border a region is counted by, as a GeoJSON Feature (MultiPolygon). `detail` (degrees, default 0.02)
+simplifies it for drawing.
+
+## GET /api/detections/?region=&date=[&cell=][&sensor=] { #api-detections }
+
+Individual detections of one UTC day inside the region's border: real latitude/longitude, time, satellite,
+FRP, confidence, product (SP/NRT) and the number of the 0.1° `cell`. With `cell` (from `/api/hotspots/`)
+only that cell. Paged with `limit`/`offset`.
+
+`/api/hotspots/` items are **grid cells** (`kind: "cell"`, `cell`, `cell_size_degrees: 0.1`, `edge`); their
+`lat`/`lon` is the cell centre, never a fire location.
+
+## GET /api/sync/ { #api-sync }
+
+The state of the synchronisation with NASA FIRMS; see [Archive and updates](../pipeline/archive-and-updates.md).

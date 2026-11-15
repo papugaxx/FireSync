@@ -6,15 +6,23 @@ from datetime import date, timedelta
 
 import pytest
 
-from conftest import AUGUST, EDGE_DAY, MODIS_ONLY_DAY, QUIET_UKRAINE_DAY, SP_AND_NRT_DAY, UKRAINE, partner_cell
+from conftest import (AUGUST, EDGE_DAY, MODIS_ONLY_DAY, QUIET_UKRAINE_DAY, SP_AND_NRT_DAY, UKRAINE, border_rings,
+                      inside_border, partner_cell)
+
+CENTRAL_AFRICA = (12.0, -18.0, 35.0, 0.0)          # config.REGIONS: a plain rectangle
 
 
-def _expected(rows, cells=None):
-    """Per (day, sensor): distinct cells, detections, FRP — computed directly from the CSV rows."""
+def _expected(rows, cells=None, rings=None):
+    """
+    Per (day, sensor): distinct cells, detections, FRP — computed directly from the CSV rows,
+    only for rows inside a cell range and/or inside a border.
+    """
     result = defaultdict(lambda: {"cells": set(), "obs": 0, "frp": []})
     for r in rows:
         y, x = partner_cell(r["lat"], r["lon"])
         if cells and not (cells[0] <= y <= cells[1] and cells[2] <= x <= cells[3]):
+            continue
+        if rings and not inside_border(rings, r["lat"], r["lon"]):
             continue
         item = result[(r["day"], r["sensor"])]
         item["cells"].add((y, x))
@@ -75,12 +83,16 @@ def test_nrt_rows_never_added_to_sp_day(app_env):
     assert not [p for p in rows if (p["latitude"], p["longitude"]) == (10.0, 10.0)]
 
 
-def test_region_tables_match_the_raw_rows(app_env, archive):
+@pytest.mark.parametrize("region", ["ukraine", "central_africa"])
+def test_region_tables_match_the_raw_rows(app_env, archive, region):
+    """Ukraine is counted by its real border, Central Africa (no border configured) by its rectangle."""
     store = app_env["store"]
-    cells = store.cell_range(UKRAINE)
-    expected = _expected(archive["rows"], cells)
+    if region == "ukraine":
+        expected = _expected(archive["rows"], rings=border_rings("country:UKR"))
+    else:
+        expected = _expected(archive["rows"], store.cell_range(CENTRAL_AFRICA))
     with closing(store.connect()) as conn:
-        rows = store.region_day_rows(conn, "ukraine", "2021-01-01", "2024-12-31")
+        rows = store.region_day_rows(conn, region, "2021-01-01", "2024-12-31")
     for day in AUGUST:
         row, d = rows[day.isoformat()], day.isoformat()
         for sensor, ch in (("MODIS", "modis"), ("VIIRS", "viirs")):
@@ -92,6 +104,8 @@ def test_region_tables_match_the_raw_rows(app_env, archive):
             assert row[f"{ch}_frp_max"] == (max(item["frp"]) if item["frp"] else None)
         shared = expected.get((d, "MODIS"), {"cells": set()})["cells"] & expected.get((d, "VIIRS"), {"cells": set()})["cells"]
         assert row["shared_cells"] == len(shared)
+    if region != "ukraine":
+        return
     quiet = rows[QUIET_UKRAINE_DAY.isoformat()]
     assert quiet["modis_cells"] == 0 and quiet["viirs_cells"] == 0     # stored day, no fire: a real zero
     only = rows[MODIS_ONLY_DAY.isoformat()]
@@ -100,10 +114,9 @@ def test_region_tables_match_the_raw_rows(app_env, archive):
 
 def test_month_area_counts_distinct_cells_with_latitude(app_env, archive):
     store = app_env["store"]
-    cells = store.cell_range(UKRAINE)
+    rings = border_rings("country:UKR")
     distinct = {partner_cell(r["lat"], r["lon"]) for r in archive["rows"]
-                if r["sensor"] == "MODIS" and r["day"].startswith("2024-08")}
-    distinct = {c for c in distinct if cells[0] <= c[0] <= cells[1] and cells[2] <= c[1] <= cells[3]}
+                if r["sensor"] == "MODIS" and r["day"].startswith("2024-08") and inside_border(rings, r["lat"], r["lon"])}
     with closing(store.connect()) as conn:
         month = store.region_month_rows(conn, "ukraine", "2024-08", "2024-08")[("2024-08", "MODIS")]
     assert month["cells"] == len(distinct) and month["loaded_days"] == 31
@@ -192,6 +205,22 @@ def test_block_codec_keeps_missing_values_missing(app_env):
 def test_custom_rectangle_equals_region_with_the_same_bounds(app_env):
     reports = app_env["reports"]
     with closing(app_env["store"].connect()) as conn:
-        a = reports.calendar(conn, reports.area("ukraine"), AUGUST[0], AUGUST[-1] + timedelta(days=2))
-        b = reports.calendar(conn, reports.area(None, UKRAINE), AUGUST[0], AUGUST[-1] + timedelta(days=2))
+        a = reports.calendar(conn, reports.area("central_africa"), AUGUST[0], AUGUST[-1] + timedelta(days=2))
+        b = reports.calendar(conn, reports.area(None, CENTRAL_AFRICA), AUGUST[0], AUGUST[-1] + timedelta(days=2))
     assert a["daily"] == b["daily"]
+
+
+def test_border_region_drops_the_neighbours_inside_its_rectangle(app_env, archive):
+    """The Ukraine rectangle also covers Moldova, Belarus, Poland and Russia; the region must not."""
+    reports = app_env["reports"]
+    with closing(app_env["store"].connect()) as conn:
+        border = reports.calendar(conn, reports.area("ukraine"), AUGUST[0], AUGUST[-1])
+        rectangle = reports.calendar(conn, reports.area(None, UKRAINE), AUGUST[0], AUGUST[-1])
+    rings = border_rings("country:UKR")
+    outside = [r for r in archive["rows"] if r["day"].startswith("2024-08") and r["sensor"] == "MODIS"
+               and 44.3 <= r["lat"] <= 52.4 and 22.1 <= r["lon"] <= 40.2 and not inside_border(rings, r["lat"], r["lon"])]
+    assert outside                                   # the test data has detections in the neighbours
+    got = sum(d["modis"]["observations"] for d in border["daily"])
+    full = sum(d["modis"]["observations"] for d in rectangle["daily"])
+    assert got == full - len(outside)
+    assert border["daily"][0]["modis"]["status"] == "loaded"

@@ -3,15 +3,16 @@
 // and react-leaflet crashes on return. Here the map is created when shown and removed when leaving.
 // Loaded through next/dynamic with ssr: false (see Explorer.tsx).
 //
-// What is drawn: /api/hotspots/ sends ONE point per active 0.1° cell and day, at the cell centre.
-// Each cell is drawn as a square colored by the sensor that saw it (MODIS / VIIRS / both).
-// Zoomed in, the square is the real 0.1° cell (≈ 11 × 11 km); zoomed out, a real cell would be
-// smaller than a pixel, so the square keeps a minimum size on screen. Clicking a cell opens the
-// "Hotspot Telemetry" card with the individual NASA detections inside it.
+// What is drawn: /api/hotspots/ sends ONE record per active 0.1° GRID CELL and day (its centre),
+// not fire locations. Each cell is drawn as a square covering the cell, colored by the sensor that saw
+// it (MODIS / VIIRS / both); zoomed out, the square keeps a minimum size on screen. Clicking a cell opens
+// the "Hotspot Telemetry" card with the real NASA detections inside it, and those are drawn as white
+// dots at their own coordinates. The region outline is the real border it is counted by.
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useEffect, useRef, useState } from "react";
-import type { Hotspot, Region } from "@/types/api";
+import type { Detection, Hotspot, Region } from "@/types/api";
+import { api } from "@/lib/api";
 import { SENSOR_COLORS } from "@/lib/colors";
 import HotspotCard from "./HotspotCard";
 
@@ -34,6 +35,7 @@ export default function FireMap({ region, hotspots, sensor }: Props) {
   const layerRef = useRef<L.LayerGroup | null>(null);
   const [zoom, setZoom] = useState(0);
   const [selected, setSelected] = useState<Hotspot | null>(null);
+  const [detections, setDetections] = useState<{ points: Detection[]; current: number }>({ points: [], current: 0 });
   // where the selected cell is on screen, plus the map width (to keep the card inside the map)
   const [pos, setPos] = useState<{ x: number; y: number; w: number } | null>(null);
 
@@ -86,7 +88,7 @@ export default function FireMap({ region, hotspots, sensor }: Props) {
     };
   }, []);
 
-  // 2. when the region changes: zoom to it (no outline for the world)
+  // 2. when the region changes: zoom to it and outline the border it is counted by (none for the world)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -95,9 +97,20 @@ export default function FireMap({ region, hotspots, sensor }: Props) {
     map.fitBounds(bounds, { padding: [20, 20] });
     map.fire("resize"); // recalculate the minimum zoom after the initial view is set
     if (region.id === "world") return;
-    const rect = L.rectangle(bounds, { color: "#17b6d9", weight: 2, fill: false, dashArray: "6 6", interactive: false }).addTo(map);
+    const style = { color: "#17b6d9", weight: 2, fill: false, dashArray: "6 6", interactive: false };
+    let outline: L.Layer = L.rectangle(bounds, style).addTo(map); // until the real border has arrived
+    let alive = true;
+    api
+      .boundary(region.id)
+      .then((b) => {
+        if (!alive || !b) return;
+        outline.remove();
+        outline = L.geoJSON(b as GeoJSON.Feature, { style: () => ({ ...style, dashArray: undefined }), interactive: false }).addTo(map);
+      })
+      .catch(() => {}); // keep the rectangle
     return () => {
-      rect.remove();
+      alive = false;
+      outline.remove();
     };
   }, [region]);
 
@@ -118,7 +131,10 @@ export default function FireMap({ region, hotspots, sensor }: Props) {
         ],
         { stroke: false, fillColor: color, fillOpacity: 0.85 },
       )
-        .bindTooltip(`${h.date} · ${SENSOR_LABEL[h.seenBy]} · FRP ${h.frp === null ? "unknown" : `${h.frp} MW`}`)
+        .bindTooltip(
+          `0.1° cell · ${h.date} · ${SENSOR_LABEL[h.seenBy]} · max FRP ${h.frp === null ? "unknown" : `${h.frp} MW`}` +
+            `${h.edge ? " · border cell" : ""} · click for the real detections`,
+        )
         .on("click", (e) => {
           L.DomEvent.stopPropagation(e); // do not let the map's own click close the card again
           setSelected(h);
@@ -148,6 +164,27 @@ export default function FireMap({ region, hotspots, sensor }: Props) {
     };
   }, [active, zoom]);
 
+  // 5. the real detections of the selected cell, at their own coordinates (the shown one is larger)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !active || !detections.points.length) return;
+    const group = L.layerGroup(
+      detections.points.map((p, k) =>
+        L.circleMarker([p.latitude, p.longitude], {
+          radius: k === detections.current ? 6 : 3.5,
+          color: "#ffffff",
+          weight: k === detections.current ? 2 : 1,
+          fillColor: SENSOR_COLORS[p.sensor],
+          fillOpacity: 1,
+          interactive: false,
+        }),
+      ),
+    ).addTo(map);
+    return () => {
+      group.remove();
+    };
+  }, [active, detections]);
+
   // the card opens above the cell, or below it when there is no room at the top;
   // horizontally it is kept inside the map, while the tail always points at the cell
   const below = pos !== null && pos.y < CARD_SPACE;
@@ -165,7 +202,14 @@ export default function FireMap({ region, hotspots, sensor }: Props) {
             className="absolute z-[1150]"
             style={{ left: cardX, top: pos.y, transform: `translate(-50%, ${below ? "18px" : "calc(-100% - 18px)"})` }}
           >
-            <HotspotCard key={`${active.id}-${sensor ?? "all"}`} cell={active} sensor={sensor} onClose={() => setSelected(null)} />
+            <HotspotCard
+              key={`${region.id}-${active.id}-${sensor ?? "all"}`}
+              region={region.id}
+              cell={active}
+              sensor={sensor}
+              onClose={() => setSelected(null)}
+              onPoints={(points, current) => setDetections({ points, current })}
+            />
           </div>
           {/* little tail pointing at the cell */}
           <span

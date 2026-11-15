@@ -7,9 +7,24 @@ export type Sensor = "MODIS" | "VIIRS";
 export interface Region {
   id: string;
   name: string;
-  /** [south, west, north, east] */
+  /** [south, west, north, east] — the view the map zooms to (not what is counted) */
   bbox: [number, number, number, number];
+  /** how the region is counted: by its real border, a border cut by a rectangle, a rectangle, or the world */
+  boundary?: { kind: "border" | "border_part" | "rectangle" | "world"; id?: string };
 }
+
+/**
+ * Why a day has (or has no) value — so "no fires", "no observations" and "not downloaded yet"
+ * are never confused:
+ *  complete     every sensor that observed the day is loaded
+ *  partial      one sensor loaded, the other still to come — or NASA is still adding passes (last days)
+ *  pending      NASA has the day; FireSync has not downloaded it yet
+ *  unavailable  NASA does not offer the day (yet)
+ *  no_data      no satellite observations for that day
+ *  not_imported archive years while the archive has not been imported
+ *  future       the day has not happened yet
+ */
+export type DayStatus = "complete" | "partial" | "pending" | "unavailable" | "no_data" | "not_imported" | "future";
 
 export interface MetaResponse {
   regions: Region[];
@@ -21,6 +36,8 @@ export interface CalendarYear {
   year: number;
   /** 12 values, January..December */
   months: (number | null)[];
+  /** why a month has no value: complete | partial | pending | future | unavailable | no_data | not_imported */
+  status?: string[];
 }
 
 export interface CalendarResponse {
@@ -40,6 +57,7 @@ export interface DayValue {
   modis: number | null;
   viirs: number | null;
   harmonized: number | null;
+  status?: DayStatus;
 }
 
 export interface MonthResponse {
@@ -49,8 +67,19 @@ export interface MonthResponse {
   days: DayValue[];
 }
 
+/**
+ * One active 0.1° GRID CELL on one day — not a fire. lat/lon is the centre of the cell;
+ * the real detections inside it come from /api/detections/ (Detection below).
+ */
 export interface Hotspot {
   id: string;
+  /** always "cell" from the backend */
+  kind?: "cell";
+  /** cell number on the 0.1° grid (row × 3600 + column) */
+  cell?: number;
+  /** the region's border passes through this cell; only detections inside the border are counted */
+  edge?: boolean;
+  /** centre of the 0.1° cell */
   lat: number;
   lon: number;
   date: string;
@@ -87,7 +116,7 @@ export interface MonthlyResponse {
 }
 
 /**
- * One detection exactly as NASA reported it (backend `GET /points`).
+ * One detection exactly as NASA reported it (backend `GET /api/detections/`), with its real coordinates.
  * Used by the "Hotspot Telemetry" card when a map cell is clicked.
  */
 export interface Detection {
@@ -101,10 +130,32 @@ export interface Detection {
   /** MODIS: "0".."100" (percent); VIIRS: "l" | "n" | "h"; null if unknown */
   confidence: string | null;
   daynight: "D" | "N" | null;
+  /** SP (final) or NRT (preliminary) */
+  product?: "SP" | "NRT" | null;
 }
 
 export interface PointsResponse {
   count: number;
   has_more: boolean;
   points: Detection[];
+}
+
+/** The real border of a region (GeoJSON Feature, MultiPolygon of [lon, lat]). */
+export interface BoundaryResponse {
+  type: "Feature";
+  properties: { region: string; kind: string; id?: string };
+  geometry: { type: "MultiPolygon"; coordinates: [number, number][][][] };
+}
+
+/** Synchronisation with NASA FIRMS (backend `GET /api/sync/`). */
+export interface SyncResponse {
+  status: "never_synced" | "catching_up" | "up_to_date";
+  from: string | null;
+  today: string;
+  pending_downloads: number;
+  days: Record<string, number>;
+  last_success_at: string | null;
+  last_complete_at: string | null;
+  last_error: { at: string; message: string } | null;
+  update?: { state: string; message: string; enabled: boolean };
 }
