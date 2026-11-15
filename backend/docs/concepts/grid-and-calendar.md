@@ -46,7 +46,7 @@ A cell is **active** on a UTC day if at least one valid detection from the chose
 
 !!! warning "What these numbers are not"
     An active cell is **not** a number of fires and **not** a burned area. Cell area also changes with latitude,
-    so the grid is not equal-area. `interpretation` in every response restates this.
+    so the grid is not equal-area. `method.interpretation` in `/calendar` restates this.
 
 ## SP over NRT
 
@@ -90,7 +90,7 @@ the exact rectangle. A point on the boundary between two neighbouring regions is
 already lie on grid lines, the two methods give identical numbers.
 
 Regions are rectangles, not administrative borders. "Ukraine" in `/regions` is the box
-`[22, 44, 41, 53]` (west, south, east, north), which also covers parts of neighbouring countries.
+`[22.1, 44.3, 40.2, 52.4]` (west, south, east, north), which also covers parts of neighbouring countries.
 A box may not cross the antimeridian (±180°).
 
 ## Calendar levels
@@ -119,3 +119,16 @@ different periods or regions.
 | `missing` | No days were loaded |
 
 For a requested period that cuts a month short, "every day" means every day *within the request*.
+
+## Known-event check
+
+Athens-area fire, 11–13 August 2024 (rectangle 23.5–24.2°E, 37.8–38.4°N):
+
+| UTC day | MODIS detections | VIIRS NOAA-20 detections |
+|---|---|---|
+| Aug 11 | 43 | 179 |
+| **Aug 12** | **131** | **256** |
+| Aug 13 | 2 | 23 |
+
+On Aug 12 there were 5 MODIS cells and 7 VIIRS cells, with 5 cells seen by both. This supports location and timing
+consistency; attributing individual hotspots to the event needs further review.

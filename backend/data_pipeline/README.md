@@ -1,50 +1,50 @@
-# Данные NASA FIRMS для FastAPI
+# NASA FIRMS data for FastAPI
 
-Эта папка отвечает за путь **NASA API → проверка ответа → SQLite → чтение из FastAPI**.
-Она не зависит от Django или FastAPI и использует стандартную библиотеку Python 3.11+.
-Старые CSV пользователя и архивы с сайта не используются. CSV здесь - формат HTTP-ответа
-Area API; модуль разбирает этот ответ и сохраняет записи в базу.
+This folder covers the path **NASA API → response validation → SQLite → reading from FastAPI**.
+It does not depend on Django or FastAPI and uses the Python 3.11+ standard library.
+The user's old CSV files and the archives from the website are not used. Here, CSV is the format of the HTTP
+response of the Area API; the module parses that response and saves the records to the database.
 
-## Что уже делает модуль
+## What the module already does
 
-- Узнаёт фактическую доступность продуктов через NASA API.
-- Поддерживает MODIS, VIIRS S-NPP, NOAA-20 и NOAA-21, SP и NRT.
-- Получает данные для всего мира или прямоугольника и заданных дат.
-- Делит историю на запросы по 1-5 дней, сохраняет прогресс и продолжает после остановки.
-- Сохраняет спутник и версию каждой строки. Terra и Aqua не смешиваются под одним названием.
-- Атомарно заменяет дневной снимок. Исправленные FRP/confidence и исчезнувшие временные
-  записи не превращаются в дополнительные наблюдения. Ошибка не удаляет прежний снимок.
-- При обычном чтении предпочитает SP, если он загружен, и использует NRT как fallback.
-- Предоставляет функции чтения наблюдений и дневных количеств для бэкенда Саши.
+- Finds out the actual availability of products through the NASA API.
+- Supports MODIS, VIIRS S-NPP, NOAA-20 and NOAA-21, SP and NRT.
+- Fetches data for the whole world or for a rectangle and given dates.
+- Splits history into requests of 1-5 days, saves progress and continues after a stop.
+- Stores the satellite and the version of each row. Terra and Aqua are not mixed under one name.
+- Atomically replaces a daily snapshot. Corrected FRP/confidence values and temporary records that disappeared
+  do not turn into extra observations. An error does not delete the previous snapshot.
+- In ordinary reads it prefers SP if it is loaded, and uses NRT as a fallback.
+- Provides functions for reading observations and daily counts for Sasha's backend.
 
-Настоящие запросы NASA требуют собственного MAP_KEY. В этой рабочей копии ключ уже
-добавлен: живой API и сохранение проверены 13 ноября 2026 года. Актуальное на момент
-проверки покрытие записано в `LIVE_STATUS.md`. Тестовые ответы используются только
-в автоматических проверках с временной БД и не загружаются в рабочую базу.
+Real NASA requests need their own MAP_KEY. In this working copy the key has already been added: the live API
+and saving were verified on 13 November 2026. The coverage at the time of verification is recorded in
+`LIVE_STATUS.md`. Test responses are used only in automated checks with a temporary database and are not loaded
+into the working database.
 
-## Начать
+## Getting started
 
-Все команды ниже выполнять из этой папки `data_pipeline`.
+Run all the commands below from this `data_pipeline` folder.
 
 ```bash
 python3 -m fires_data init
 python3 -m fires_data doctor
 ```
 
-Получить бесплатный ключ: [NASA FIRMS MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/).
-Ключ приходит по email. Скопировать `.env.example` в `.env` и заполнить `FIRMS_MAP_KEY`.
-Файл `.env` не отправлять в чат и не добавлять в Git. Модуль сам читает этот файл;
-отдельная библиотека dotenv не нужна.
+Get a free key: [NASA FIRMS MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/).
+The key arrives by email. Copy `.env.example` to `.env` and fill in `FIRMS_MAP_KEY`.
+Do not send the `.env` file in chat and do not add it to Git. The module reads this file itself;
+a separate dotenv library is not needed.
 
 ```text
-FIRMS_MAP_KEY=ваш_настоящий_ключ
+FIRMS_MAP_KEY=your_real_key
 FIRMS_DB_PATH=var/fires.sqlite3
 ```
 
-Переменные окружения имеют приоритет над `.env`. Относительный путь базы в `.env`
-считается от папки самого `.env`, а не от текущей папки запуска.
+Environment variables take priority over `.env`. A relative database path in `.env`
+is resolved from the folder of the `.env` file itself, not from the current working folder.
 
-## Проверить подключение и сделать первую загрузку
+## Check the connection and make the first load
 
 ```bash
 python3 -m fires_data availability
@@ -53,75 +53,75 @@ python3 -m fires_data sync --area world --recent-days 1 --sources MODIS_NRT VIIR
 python3 -m fires_data status
 ```
 
-`--recent-days 1` означает последний завершённый UTC-день, то есть вчера по UTC.
-Если NASA не сообщает доступность нужного дня, план это покажет. Даты не придумываются.
-`availability` показывает реальные границы продуктов; старые даты из учебника NASA
-не используются как текущие границы.
+`--recent-days 1` means the last complete UTC day, that is, yesterday in UTC.
+If NASA does not report availability for a needed day, the plan shows it. Dates are never invented.
+`availability` shows the real product boundaries; the old dates from the NASA handbook
+are not used as current boundaries.
 
-## Загружать историю
+## Load history
 
-Сначала посмотреть план:
+First look at the plan:
 
 ```bash
 python3 -m fires_data plan --area world --all-history
 ```
 
-Затем запустить ограниченную порцию:
+Then run a bounded portion:
 
 ```bash
 python3 -m fires_data sync --area world --all-history --batch-days 5 --max-requests 100
 ```
 
-Повтор той же команды продолжает загрузку по сохранённым дневным срезам. После
-достижения бюджета запросов задача получает статус `paused`, CLI возвращает код 2.
-Код 0 означает успешное завершение запрошенного плана, код 1 - ошибку. При Ctrl+C
-готовые дневные срезы сохраняются. Для безлимитного числа запросов есть
-`--max-requests 0`, но скорость и фактический расход квоты сначала нужно измерить.
+Repeating the same command continues the load from the saved daily slices. When the
+request budget is reached, the job gets the status `paused` and the CLI returns code 2.
+Code 0 means the requested plan finished successfully, code 1 means an error. On Ctrl+C
+the finished daily slices are kept. There is `--max-requests 0` for an unlimited number of
+requests, but the speed and the actual quota use must be measured first.
 
-По умолчанию сохраняется запас 30 GiB свободного диска, плюс оценка места на следующий
-пакет и временную запись SQLite. При нехватке места задача ставится на паузу.
-Запас задаётся `--min-free-gb`; для сервера его нужно выбрать под реальный диск и
-политику хранения. Этот ограничитель не является оценкой размера всего архива.
+By default a reserve of 30 GiB of free disk is kept, plus an estimate of the space for the next
+batch and the temporary SQLite write. If there is not enough space, the job is paused.
+The reserve is set with `--min-free-gb`; on a server it must be chosen for the real disk and
+the retention policy. This limit is not an estimate of the size of the whole archive.
 
-`auto` по умолчанию выбирает SP либо NRT для каждого семейства и дня. Вся история
-приборов различается; недоступные даты выводятся отдельно. Отсутствие VIIRS до запуска
-спутника не превращается в ноль. Целый мировой архив не обещается загрузить мгновенно:
-время и размер зависят от реальных ответов и квоты NASA.
+`auto` by default chooses SP or NRT for each family and day. The whole history of the
+instruments differs; unavailable dates are listed separately. The absence of VIIRS before the launch of the
+satellite does not turn into zero. Loading the whole world archive instantly is not promised:
+the time and size depend on the real responses and the NASA quota.
 
-Пример своей области:
+An example with your own area:
 
 ```bash
 python3 -m fires_data plan --bbox 22 44 41 53 --from 2024-08-01 --to 2024-08-31
 ```
 
-Порядок границ всегда **west south east north**. Это прямоугольник, а не точная
-административная граница страны. Пересечение линии перемены дат в одном bbox пока
-не поддерживается. Для всей планеты используется `--area world`.
+The order of the bounds is always **west south east north**. This is a rectangle, not the exact
+administrative border of a country. Crossing the date line in one bbox is not yet
+supported. Use `--area world` for the whole planet.
 
-## Обновлять свежие данные
+## Update fresh data
 
 ```bash
 python3 -m fires_data sync --area world --recent-days 3 --include-today --sources MODIS_NRT VIIRS_NOAA20_NRT VIIRS_NOAA21_NRT --max-requests 20
 ```
 
-Эта команда включает сегодня и два предыдущих UTC-дня. Сегодняшние данные неполные.
-Эти свежие окна по умолчанию обновляются повторно. Для принудительного
-перезапроса ранее загруженной истории использовать `--refresh`.
+This command includes today and the two previous UTC days. Today's data is incomplete.
+These fresh windows are re-downloaded by default. To force a re-request of
+previously loaded history, use `--refresh`.
 
-Планировщик пока не подключён: команда обновления уже выделена, её можно запускать
-из отдельного процесса или по расписанию. Не запускать много синхронизаций одной
-области одновременно. Обычные запросы FastAPI должны читать готовую базу, а не
-ждать внутри HTTP-ответа скачивания многолетней истории.
+The scheduler is not connected yet: the update command is already separated out, and it can be run
+from a separate process or on a schedule. Do not run many syncs of the same
+area at once. Ordinary FastAPI requests should read the ready database, not
+wait inside an HTTP response for a multi-year history download.
 
-## Саше для FastAPI
+## For Sasha, for FastAPI
 
-В своём Python-окружении установить локальный пакет из корня общего репозитория:
+In your Python environment install the local package from the root of the shared repository:
 
 ```bash
 python -m pip install -e ./data_pipeline
 ```
 
-Чтение из того же файла БД:
+Reading from the same database file:
 
 ```python
 from datetime import date
@@ -139,80 +139,80 @@ rows = store.observations(
 )
 ```
 
-Даты в примере заменить реально загруженными. `observations` возвращает UTC-время,
-координаты, прибор, спутник, FRP, confidence, версию и другие поля. Для фронтенда:
+Replace the dates in the example with dates that are really loaded. `observations` returns UTC time,
+coordinates, instrument, satellite, FRP, confidence, version and other fields. For the frontend:
 `lat = latitude`, `lon = longitude`, `seenBy = sensor`, `date = observed_at[:10]`.
-Для прямоугольной области в мировой базе передать `bbox=(west, south, east, north)`
-в `observations` или `daily_counts`, сохранив `scope_id="world"`. Например,
-`bbox=(22, 44, 41, 53)`. Это приблизительная область: точной границей страны такой
-прямоугольник не является. Идентификатор региона фронтенда не подставлять вместо scope.
+For a rectangular area in the world database, pass `bbox=(west, south, east, north)`
+to `observations` or `daily_counts`, keeping `scope_id="world"`. For example,
+`bbox=(22, 44, 41, 53)`. This is an approximate area: such a rectangle is not the exact border of a country.
+Do not substitute the frontend's region identifier for the scope.
 
-`BOTH` нельзя назначать отдельной исходной записи: для него нужен отдельный алгоритм
-сопоставления. Часть числовых полей может быть `None`; не превращать это в нулевую мощность.
+`BOTH` cannot be assigned to a single source record: it needs a separate matching algorithm.
+Some numeric fields can be `None`; do not turn that into zero power.
 
-Другие методы: `list_scopes()`, `list_windows(scope_id, start, end)`,
+Other methods: `list_scopes()`, `list_windows(scope_id, start, end)`,
 `daily_counts(scope_id, start, end)`, `status(scope_id)`, `list_jobs()`, `get_job(id)`.
-SQL-запросы и соединения создаются внутри методов, соединение не делится между
-потоками FastAPI. SQLite работает в WAL, с foreign keys и ожиданием кратких блокировок.
+SQL queries and connections are created inside the methods; a connection is not shared between
+FastAPI threads. SQLite works in WAL mode, with foreign keys and a wait for short locks.
 
-Каждый запрос чтения выбирает один `scope_id`. Нельзя складывать результаты
-пересекающихся сохранённых областей: это повторно посчитает одни наблюдения.
-Чтение по умолчанию выбирает SP вместо NRT для того же семейства и дня, включая
-валидный пустой SP-срез. Разные платформы VIIRS остаются различимыми.
+Each read request selects one `scope_id`. Results of overlapping saved areas must not
+be added together: that would count the same observations again.
+By default a read selects SP instead of NRT for the same family and day, including
+a valid empty SP slice. Different VIIRS platforms remain distinguishable.
 
-## Расчёт общей сетки для календаря
+## Calculating the common grid for the calendar
 
 ```bash
 python3 -m fires_data calendar --scope world --from 2024-08-01 --to 2024-08-31
 ```
 
-Это чтение локальной базы без запросов NASA. За каждый UTC-день рассчитываются
-число наблюдений и число активных клеток общей сетки 0.1° отдельно для MODIS
-(Terra+Aqua, объединение клеток) и VIIRS NOAA-20. Пример выбранной области:
+This reads the local database, without NASA requests. For each UTC day it calculates
+the number of observations and the number of active cells of the common 0.1° grid separately for MODIS
+(Terra+Aqua, union of cells) and VIIRS NOAA-20. An example for a chosen area:
 
 ```bash
 python3 -m fires_data calendar --scope world --from 2024-08-01 --to 2024-08-31 --bbox 22 44 41 53
 ```
 
-Границы — прямоугольник, не точный контур страны. Из FastAPI:
+The bounds are a rectangle, not the exact outline of a country. From FastAPI:
 
 ```python
 from fires_data import grid_calendar
 report = grid_calendar(store, "world", start, end, bbox=(22, 44, 41, 53))
 ```
 
-В `daily` находятся значения по дням. Для незагруженного источника — `status: missing`
-и `null`, для валидного пустого загруженного дня — `loaded` и 0.
-`shared_active_cells` означает число клеток, где оба выбранных набора дали наблюдения
-за одни UTC-сутки. Это не подтверждение одного физического пожара.
+`daily` holds the values by day. For a source that is not loaded: `status: missing`
+and `null`; for a valid empty loaded day: `loaded` and 0.
+`shared_active_cells` means the number of cells where both selected sets gave observations
+within the same UTC day. This is not a confirmation of one physical fire.
 
-`totals.*.active_cell_days` — сумма дневных значений, то есть ячейко-дни, а не разные
-ячейки месяца. Если хотя бы один запрошенный день источника не загружен, его итог `null`.
-`coverage` показывает полноту получения. Один вызов ограничен 366 днями.
+`totals.*.active_cell_days` is the sum of the daily values, that is, cell-days, not distinct
+cells of the month. If at least one requested day of a source is not loaded, its total is `null`.
+`coverage` shows the completeness of retrieval. One call is limited to 366 days.
 
-Результат вычисляется из одного снимка БД при каждом вызове. После обновления сырого
-среза следующий вызов пересчитывает результат; отдельного устаревающего кэша нет.
-На этой рабочей базе мировой август 2024 посчитался за 28 секунд; прямоугольник
-22,44,41,53 — за 22 секунды. Для сайта использовать заранее рассчитанный результат
-или отдельную фоновую задачу с проверкой входных версий. Даже вызов в thread pool
-не делает тяжёлый расчёт мгновенным. Примеры `var/calendar-*.json` — сохранённые
-снимки; после изменения входных данных их нужно пересчитать.
+The result is computed from one database snapshot on every call. After a raw
+slice is updated, the next call recomputes the result; there is no separate stale cache.
+On this working database the world for August 2024 took 28 seconds; the rectangle
+22,44,41,53 took 22 seconds. For the website, use a precomputed result
+or a separate background task that checks the input versions. Even a call in a thread pool
+does not make a heavy calculation instant. The `var/calendar-*.json` examples are saved
+snapshots; after the input data changes they must be recomputed.
 
-Общая сетка — исходный сравнительный показатель, **не проверенная гармонизация**.
-Коэффициент, R², историческая норма и аномалии этим методом не выдумываются.
-Метод, ограничения и источники — в `GRID_METHOD.md`.
+The common grid is the initial comparative indicator, **not a validated harmonization**.
+The coefficient, R², historical norm and anomalies are not invented by this method.
+The method, limitations and sources are in `GRID_METHOD.md`.
 
-## Ограниченный эксперимент согласования индексов
+## A limited experiment on reconciling the indices
 
 ```bash
 python3 -m fires_data calibrate --scope world --from 2024-08-01 --to 2024-08-31 --split 2024-08-22 --bbox 22 44 41 53
 ```
 
-Команда сначала читает текущие записи базы и рассчитывает сеточные ряды. Затем
-подбирает коэффициент только на датах до `--split`; остальные даты оставляет для
-проверки. NASA API и исходные записи не изменяются.
+The command first reads the current records of the database and calculates the grid series. Then it
+fits a coefficient only on the dates before `--split`; the remaining dates are kept for
+checking. The NASA API and the source records are not changed.
 
-Из Python:
+From Python:
 
 ```python
 from datetime import date
@@ -220,55 +220,54 @@ from fires_data import calibrate_calendar
 experiment = calibrate_calendar(report, split_date=date(2024, 8, 22))
 ```
 
-`coefficient` — масштабная поправка VIIRS к выбранному MODIS-референсу. В `metrics`
-находятся отдельные результаты train/test для исходного VIIRS, поправки и постоянного
-среднего тренировочного MODIS. `daily` сохраняет исходные и расчётные значения.
-`insufficient_data` означает недостаточные данные для опыта; коэффициент и метрики
-в таком случае отсутствуют. `improved_on_holdout` означает улучшение только на
-отложенных датах этого опыта. `not_improved` — критерий улучшения не выполнен.
+`coefficient` is a scale correction of VIIRS to the chosen MODIS reference. `metrics`
+holds the separate train/test results for the raw VIIRS, the correction and the constant
+training mean of MODIS. `daily` keeps the source and calculated values.
+`insufficient_data` means there is not enough data for the experiment; in that case the coefficient and metrics
+are absent. `improved_on_holdout` means an improvement only on the
+held-out dates of this experiment. `not_improved` means the improvement criterion was not met.
 
-Любой результат остаётся экспериментальным и `apply_automatically=false`.
-Поправка не меняет точки карты и исходные ряды. Условия опыта и ограничения —
-в `CALIBRATION_METHOD.md`.
+Any result remains experimental and has `apply_automatically=false`.
+The correction does not change the map points or the source series. The conditions of the experiment and the limitations
+are in `CALIBRATION_METHOD.md`.
 
-## Что означает готовность данных
+## What data readiness means
 
-Успешный HTTP-ответ проверяется как CSV, а не только по статусу 200. Заголовок без
-строк означает ноль полученных обнаружений. HTML, текст ошибки и пустое тело не
-перезаписывают данные. Загрузка полного ответа не доказывает полное наблюдение
-территории спутником; ноль обнаружений не доказывает отсутствие огня.
+A successful HTTP response is checked as CSV, not only by status 200. A header with no
+rows means zero detections received. HTML, error text and an empty body do not
+overwrite data. Loading a full response does not prove full observation of the
+territory by the satellite; zero detections do not prove the absence of fire.
 
-`daily_counts` считает исходные наблюдения. Это ещё не число отдельных пожаров,
-не число активных ячеек и не гармонизированный показатель. `grid_calendar`
-уже рассчитывает отдельные сеточные ряды. Отдельный эксперимент согласования реализован командой `calibrate`;
-его переносимость на другие периоды и территории ещё не подтверждена.
-Обучение нейросети для API-загрузки не нужно.
+`daily_counts` counts raw observations. This is not yet the number of separate fires,
+not the number of active cells and not a harmonized indicator. `grid_calendar`
+already calculates separate grid series. A separate experiment on reconciling the indices is implemented by the `calibrate` command;
+its transferability to other periods and territories has not yet been confirmed.
 
-## Слои карты и данные отличаются
+## Map layers and data are different
 
-[WMS/WMS-Time NASA](https://firms.modaps.eosdis.nasa.gov/mapserver/wms-info/) дают изображения
-карты. Их подключает FastAPI/Leaflet отдельно. Этот модуль сохраняет числовые наблюдения
-через Area API. WFS для этого первого пути не требуется.
+[NASA WMS/WMS-Time](https://firms.modaps.eosdis.nasa.gov/mapserver/wms-info/) provide map
+images. FastAPI/Leaflet connects them separately. This module saves numeric observations
+through the Area API. WFS is not needed for this first path.
 
-## Проверки
+## Checks
 
 ```bash
 python3 -m unittest discover -s tests -v
 ```
 
-Проверяются повтор, исправления, атомарность, пустой ответ, SP/NRT и изоляция областей.
-Проверки работают без ключа и без сети. После появления MAP_KEY отдельно выполняются
-`availability` и первый реальный запрос. До этого подключение к живому NASA не считается
-проверенным.
+The checks cover repetition, corrections, atomicity, an empty response, SP/NRT and isolation of areas.
+The checks work without a key and without a network. Once a MAP_KEY is available, `availability` and the first real request
+are run separately. Until then, the connection to live NASA is not considered
+verified.
 
-## Основные файлы
+## Main files
 
-- `fires_data/client.py` - обращения к NASA и ограничение ответов.
-- `fires_data/parsing.py` - проверка CSV и разбор наблюдений.
-- `fires_data/schema.sql`, `store.py` - схема SQLite и операции хранения.
-- `fires_data/service.py` - планирование, загрузка, обновления и прогресс.
-- `fires_data/cli.py` - команды запуска.
+- `fires_data/client.py` - calls to NASA and the response limit.
+- `fires_data/parsing.py` - CSV validation and parsing of observations.
+- `fires_data/schema.sql`, `store.py` - the SQLite schema and storage operations.
+- `fires_data/service.py` - planning, loading, updates and progress.
+- `fires_data/cli.py` - the launch commands.
 
-Официальные документы: [Area API](https://firms.modaps.eosdis.nasa.gov/api/area/),
-[доступность продуктов](https://firms.modaps.eosdis.nasa.gov/api/data_availability/),
+Official documents: [Area API](https://firms.modaps.eosdis.nasa.gov/api/area/),
+[product availability](https://firms.modaps.eosdis.nasa.gov/api/data_availability/),
 [MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/).

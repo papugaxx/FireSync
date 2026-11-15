@@ -89,3 +89,18 @@ FireSync/
 ```
 
 The `backend/_old/` folder holds earlier versions of some files. It is kept locally and is not in git.
+
+## About the project
+
+FireSync is a hackathon research prototype built for the NASA Space Apps Challenge 2026, designed for researchers,
+regional analysts and land managers.
+
+## Data and attribution
+
+- Fire detections: [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) (MODIS Terra/Aqua, VIIRS NOAA-20).
+- Basemap imagery: Esri, Maxar, Earthstar Geographics.
+- Athens consistency check: contains modified Copernicus Sentinel data (2024), processed by ESA.
+
+## SI assistance
+
+SI was used for: learning/explaining new things, fixing code errors, spellchecking everything.

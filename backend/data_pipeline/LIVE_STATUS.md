@@ -1,53 +1,53 @@
-# Состояние данных на 14 ноября 2026 года
+# Data status as of 14 November 2026
 
-Путь получения уже работает: NASA FIRMS Area API → проверка CSV-ответа → SQLite.
-Старые пользовательские CSV и ZIP-архивы NASA не использовались.
+The retrieval path already works: NASA FIRMS Area API → CSV response validation → SQLite.
+The old user CSV files and NASA ZIP archives were not used.
 
-## Что действительно загружено
+## What is actually loaded
 
-Область: весь мир, `scope_id="world"`. Все даты и время в UTC.
-В базе 4 893 436 исходных наблюдений. Размер файла базы около 2.88 GiB.
+Area: the whole world, `scope_id="world"`. All dates and times are in UTC.
+The database holds 4 893 436 raw observations. The database file size is about 2.88 GiB.
 
-| Источник | Загруженные даты | Дни | Записи |
+| Source | Loaded dates | Days | Records |
 |---|---|---:|---:|
-| MODIS_SP | 2000-11-01 — 2001-02-09 и отдельно 2024-08-01 — 2024-08-31 | 132 | 1 262 957 |
+| MODIS_SP | 2000-11-01 — 2001-02-09 and separately 2024-08-01 — 2024-08-31 | 132 | 1 262 957 |
 | VIIRS_SNPP_SP | 2012-01-20 | 1 | 45 269 |
 | MODIS_NRT | 2026-11-12 | 1 | 9 252 |
 | VIIRS_NOAA20_NRT | 2026-11-12 | 1 | 49 061 |
 | VIIRS_NOAA20_SP | 2024-08-01 — 2024-08-31 | 31 | 3 526 897 |
 
-Это частичное покрытие, а не весь мировой архив. Таблица — снимок состояния:
-после следующих загрузок актуальные значения смотреть командой `python3 -m fires_data status`.
+This is partial coverage, not the whole world archive. The table is a snapshot of the state:
+after the next loads, look at the current values with `python3 -m fires_data status`.
 
-Последняя загрузка общего августа 2024 завершена: 62 из 62 дневных срезов, без ошибок.
-За август MODIS дал 773 697 наблюдений, VIIRS NOAA-20 — 3 526 897.
-До этого ранняя историческая порция MODIS остановлена по лимиту запросов;
-это сохранённый прогресс отдельной задачи, а не ошибка августовской загрузки.
+The last load of the common August 2024 is finished: 62 of 62 daily slices, without errors.
+For August MODIS gave 773 697 observations, VIIRS NOAA-20 gave 3 526 897.
+Before that, the early historical portion of MODIS was stopped by the request limit;
+this is the saved progress of a separate job, not an error of the August load.
 
-NASA сообщает доступность более поздней истории и других платформ VIIRS;
-они поддерживаются загрузчиком, но ещё не загружены полностью. Отсутствующий в базе
-день означает «не загружен», а не «пожаров не было».
+NASA reports the availability of later history and of other VIIRS platforms;
+they are supported by the loader but not yet fully loaded. A day missing from the database
+means "not loaded", not "there were no fires".
 
-## Что уже проверено
+## What has already been verified
 
-- Ключ работает: получены реальные границы дат и реальные ответы Area API.
-- Исторические и свежие запросы работают.
-- Повторный запрос двух свежих наборов сохранил прежнее количество: 58 313 записей.
-- Проверка целостности SQLite: `ok`.
-- Все 52 автоматических проверок прошли; их данные находятся только во временных базах.
-- Загруженные дни и прогресс сохраняются, ошибки не затирают прежний дневной снимок.
-- Добавлены ограничение запросов, проверка квоты NASA и запас свободного диска.
+- The key works: real date boundaries and real Area API responses were received.
+- Historical and fresh requests work.
+- A repeated request for two fresh sets kept the previous count: 58 313 records.
+- The SQLite integrity check: `ok`.
+- All 52 automated checks passed; their data lives only in temporary databases.
+- Loaded days and progress are saved, and errors do not overwrite the previous daily snapshot.
+- A request limit, a NASA quota check and a free-disk reserve were added.
 
-## Подключение Саши
+## Connecting Sasha
 
-Backend — FastAPI. Этот пакет не зависит от Django.
-Из корня общего репозитория в окружении backend:
+The backend is FastAPI. This package does not depend on Django.
+From the root of the shared repository, in the backend environment:
 
 ```bash
 python -m pip install -e ./data_pipeline
 ```
 
-Пример чтения реального загруженного дня:
+An example of reading a real loaded day:
 
 ```python
 from datetime import date
@@ -63,76 +63,75 @@ rows = store.observations(
 )
 ```
 
-`limit` ограничивает страницу ответа. Для всей выборки нужны следующие страницы,
-а для карты — фильтр области и/или отдельный слой карты. Не отправлять сотни тысяч
-записей одним ответом и не скачивать историю NASA внутри пользовательского запроса.
+`limit` bounds the response page. For the whole selection you need the following pages,
+and for the map an area filter and/or a separate map layer. Do not send hundreds of thousands
+of records in one response and do not download NASA history inside a user request.
 
-Саше нужно сделать HTTP-методы, согласованные с фронтендом, преобразовать поля,
-передавать нужный период и `bbox` для области и возвращать покрытие данных.
+Sasha needs to make the HTTP methods agreed with the frontend, convert the fields,
+pass the needed period and the `bbox` for an area, and return the data coverage.
 
-Фильтр уже добавлен в `Store`: `observations(..., bbox=(22, 44, 41, 53))` и
-`daily_counts(..., bbox=(22, 44, 41, 53))`. Используется та же мировая база и
-`scope_id="world"`. Это прямоугольник, а не точная административная граница.
-Идентификаторы регионов фронта Саша сопоставляет их координатам.
-Методы хранения: `observations`, `daily_counts`, `list_windows`, `status`.
-Описание и другие примеры есть в README.md.
+The filter has already been added to `Store`: `observations(..., bbox=(22, 44, 41, 53))` and
+`daily_counts(..., bbox=(22, 44, 41, 53))`. The same world database and
+`scope_id="world"` are used. This is a rectangle, not an exact administrative border.
+Sasha maps the frontend's region identifiers to their coordinates.
+The storage methods: `observations`, `daily_counts`, `list_windows`, `status`.
+The description and other examples are in README.md.
 
-На другом компьютере `.env` нужно настроить отдельно. Сама база не передаётся через
-обычный Git: `var/` исключён. Для передачи SQLite во время работы загрузчика использовать
-штатный SQLite backup, а не копировать один файл при активной записи.
+On another computer `.env` must be set up separately. The database itself is not passed through
+ordinary Git: `var/` is excluded. To pass SQLite while a loader is running, use the
+standard SQLite backup, and do not copy a single file while writing is active.
 
-## Что остаётся сделать
+## What remains to be done
 
-1. Продолжать загрузку нужных периодов и платформ с сохранением прогресса.
-2. Саша подключает базу к FastAPI, затем вместе с фронтендом проверяет полный сценарий.
-3. Отдельно подключить карту WMS/подходящий слой и регулярный запуск обновления.
-4. Проверить переносимость экспериментальной поправки на новых периодах и территориях.
+1. Continue loading the needed periods and platforms with progress saved.
+2. Sasha connects the database to FastAPI, then checks the full scenario together with the frontend.
+3. Separately connect a WMS map / a suitable layer and the regular update run.
+4. Check the transferability of the experimental correction on new periods and territories.
 
-Сейчас `daily_counts` считает исходные обнаружения. Это не число отдельных пожаров,
-не активные ячейки и не гармонизированный показатель. Нейросеть для скачивания данных
-не нужна. Качество согласования приборов пока не измерялось.
+For now `daily_counts` counts raw detections. This is not the number of separate fires,
+not active cells and not a harmonized indicator. The quality of the reconciliation of the instruments has not been measured yet.
 
-Ключ хранится только в локальной настройке. Коммитов и push в этом этапе не делали.
+The key is stored only in a local setting. No commits or pushes were made at this stage.
 
-## Добавлен расчёт общей сетки
+## The common grid calculation was added
 
-Функция `grid_calendar(store, scope_id, start, end, bbox=None)` и команда `calendar`
-читают исходные записи в одном снимке БД. Дают отдельные ряды MODIS Terra+Aqua
-и VIIRS NOAA-20, число активных клеток 0.1° по дням, общие клетки и полноту данных.
-Это первый сравнительный показатель, а не проверенная гармонизация.
+The function `grid_calendar(store, scope_id, start, end, bbox=None)` and the `calendar` command
+read the raw records in one database snapshot. They give separate series for MODIS Terra+Aqua
+and VIIRS NOAA-20, the number of active 0.1° cells per day, the shared cells and the completeness of the data.
+This is the first comparative indicator, not a validated harmonization.
 
-Саше для FastAPI:
+For Sasha, for FastAPI:
 
 ```python
 from fires_data import grid_calendar
 report = grid_calendar(store, "world", start, end, bbox=(22, 44, 41, 53))
 ```
 
-Подробные единицы и ограничения: GRID_METHOD.md.
+Detailed units and limitations: GRID_METHOD.md.
 
 
-Реальный расчёт августа проверен: исходные суммы 773 697 MODIS и 3 526 897 VIIRS
-совпали с базой; активность составила 285 264 и 723 687 ячейко-дней соответственно.
-Это два самостоятельных ряда без калибровки. За 1 августа результат независимо
-сверен другим способом подсчёта клеток. Незагруженная дата корректно даёт null.
+The real calculation for August has been verified: the raw sums of 773 697 MODIS and 3 526 897 VIIRS
+matched the database; the activity was 285 264 and 723 687 cell-days respectively.
+These are two independent series without calibration. For 1 August the result was independently
+cross-checked by another way of counting cells. A date that is not loaded correctly gives null.
 
-Готовые локальные снимки: `var/calendar-world-2024-08.json` и
-`var/calendar-ukraine-bbox-2024-08.json`. Второй — прямоугольник 22,44,41,53, не контур
-страны. При обновлении источников пересчитать. Время расчёта на этом компьютере:
-28 секунд для мира, 22 секунды для прямоугольника.
+The ready local snapshots: `var/calendar-world-2024-08.json` and
+`var/calendar-ukraine-bbox-2024-08.json`. The second one is the rectangle 22,44,41,53, not the outline of
+a country. Recompute when the sources are updated. The calculation time on this computer:
+28 seconds for the world, 22 seconds for the rectangle.
 
-## Эксперимент масштабной поправки
+## The scale correction experiment
 
-Добавлена отдельная команда `calibrate` и функция `calibrate_calendar`.
-Базовый календарь по-прежнему содержит два исходных ряда без автоматической поправки.
-Опыт использует тренировочные даты до `--split`, остальные оставляет для проверки.
-Сравниваются исходный VIIRS, масштабированный VIIRS и постоянное тренировочное
-среднее MODIS. Результат экспериментальный, `apply_automatically=false`.
-Метод и ограничения — CALIBRATION_METHOD.md.
+A separate `calibrate` command and the `calibrate_calendar` function were added.
+The base calendar still contains two raw series without an automatic correction.
+The run uses the training dates before `--split` and keeps the remaining ones for checking.
+Raw VIIRS, scaled VIIRS and the constant training
+mean of MODIS are compared. The result is experimental, `apply_automatically=false`.
+The method and limitations are in CALIBRATION_METHOD.md.
 
-Первый опыт завершён для bbox22,44,41,53 и августа2024. Train21день/test10дней,
-коэффициент0.3342303670. TestMAE: исходный223.30, с поправкой34.52,
-тренировочное среднее46.64. TestR²=0.0143, поэтому дневная динамика объясняется слабо.
-Статус improved_on_holdout относится только к этому короткому опыту. Все52проверки
-прошли; коэффициент и основные метрики независимо сверены. Снимок результатов:
-`var/calibration-ukraine-bbox-2024-08.json`, человекочитаемый отчёт с тем же именем `.md`.
+The first run is finished for bbox 22,44,41,53 and August 2024. Train 21 days / test 10 days,
+coefficient 0.3342303670. Test MAE: raw 223.30, with correction 34.52,
+training mean 46.64. Test R² = 0.0143, so the daily dynamics are explained weakly.
+The status improved_on_holdout applies only to this short experiment. All 52 checks
+passed; the coefficient and the main metrics were independently cross-checked. The snapshot of the results:
+`var/calibration-ukraine-bbox-2024-08.json`, the human-readable report with the same name `.md`.

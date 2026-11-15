@@ -1,51 +1,51 @@
-# Результат первого эксперимента согласования
+# Result of the first reconciliation experiment
 
-Поправка уменьшила среднее расхождение с выбранным MODIS-референсом на отложенных
-датах. При этом дневная динамика передаётся слабо: R² всего около 0.014.
-Это ограниченный эксперимент, а не подтверждённая гармонизация всей истории.
+The correction reduced the mean discrepancy from the chosen MODIS reference on the held-out
+dates. At the same time the daily dynamics are conveyed weakly: R² is only about 0.014.
+This is a limited experiment, not a confirmed harmonization of the whole history.
 
-## Область и данные
+## Area and data
 
-- Прямоугольник: west=22, south=44, east=41, north=53. Это область вокруг Украины,
-  не точная граница страны.
-- Сетка: 0.1°, UTC-дни, все валидные confidence/type.
-- Референс: объединение активных клеток MODIS Terra и Aqua.
-- Второй ряд: активные клетки VIIRS NOAA-20.
-- Подбор коэффициента: 1–21 августа 2024, 21 парный день.
-- Независимая от подбора проверка: 22–31 августа 2024, 10 парных дней.
-- Пропущенных пар нет.
+- Rectangle: west=22, south=44, east=41, north=53. This is an area around Ukraine,
+  not the exact border of the country.
+- Grid: 0.1°, UTC days, all valid confidence/type values.
+- Reference: the union of active MODIS Terra and Aqua cells.
+- Second series: active VIIRS NOAA-20 cells.
+- Fitting the coefficient: 1–21 August 2024, 21 paired days.
+- Check independent of the fit: 22–31 August 2024, 10 paired days.
+- There are no missing pairs.
 
-## Расчёт
+## Calculation
 
-Коэффициент, подобранный только по первой части месяца: **0.3342303670**.
-Оценка индекса в шкале MODIS = VIIRS-индекс × коэффициент.
-Это дробный расчётный индекс, а не фактически обнаруженное число клеток.
+The coefficient, fitted only on the first part of the month: **0.3342303670**.
+The estimate of the index on the MODIS scale = VIIRS index × coefficient.
+This is a fractional calculated index, not the actually detected number of cells.
 
-## Проверка на 22–31 августа
+## Check on 22–31 August
 
-| Вариант | MAE | RMSE | Среднее смещение | R² |
+| Variant | MAE | RMSE | Mean bias | R² |
 |---|---:|---:|---:|---:|
-| Исходный VIIRS | 223.30 | 235.14 | 223.30 | -30.191 |
-| VIIRS с масштабной поправкой | 34.52 | 41.80 | -12.38 | 0.014 |
-| Среднее MODIS тренировочного периода | 46.64 | 59.43 | -41.94 | -0.992 |
+| Raw VIIRS | 223.30 | 235.14 | 223.30 | -30.191 |
+| VIIRS with the scale correction | 34.52 | 41.80 | -12.38 | 0.014 |
+| Mean of MODIS over the training period | 46.64 | 59.43 | -41.94 | -0.992 |
 
-MAE показывает среднее абсолютное расхождение с MODIS в единицах дневного индекса.
-Меньше — ближе к выбранному референсу. MODIS не является истинным числом пожаров.
-Среднее смещение считается как оценка минус MODIS: отрицательное означает занижение.
+MAE shows the mean absolute discrepancy from MODIS in units of the daily index.
+Lower is closer to the chosen reference. MODIS is not the true number of fires.
+The mean bias is computed as estimate minus MODIS: a negative value means an underestimate.
 
-Кандидат выполнил заранее заданный критерий: ошибка MAE ниже исходного VIIRS и
-постоянного среднего, рассчитанного на тренировочных датах. Статус опыта:
-`improved_on_holdout`. Низкий R² показывает, что совпадение колебаний по дням слабое.
+The candidate met the criterion set in advance: its MAE is lower than raw VIIRS and than the
+constant mean computed on the training dates. The status of the experiment:
+`improved_on_holdout`. The low R² shows that the agreement of the day-to-day fluctuations is weak.
 
-## Практическое использование
+## Practical use
 
-Исходные ряды остаются отдельно. Поправка не применяется автоматически к другим
-регионам, сезонам, платформам и отдельным точкам карты. `apply_automatically=false`.
-Десять соседних дней одного месяца не доказывают переносимость метода.
-Следующая научная проверка требует другого периода, не использованного в подборе.
+The source series remain separate. The correction is not applied automatically to other
+regions, seasons, platforms or separate map points. `apply_automatically=false`.
+Ten adjacent days of one month do not prove the transferability of the method.
+The next scientific check requires another period that was not used in the fit.
 
-Код прошёл 52 проверки. Коэффициент и MAE/RMSE/смещение отдельно сверены независимым
-расчётом стандартной статистической функцией. Исходная база не менялась.
+The code passed 52 checks. The coefficient and the MAE/RMSE/bias were separately cross-checked with an independent
+calculation using a standard statistical function. The source database was not changed.
 
-Полные параметры, исходные дневные значения и checksum срезов находятся в соседнем
-JSON-файле `calibration-ukraine-bbox-2024-08.json`. Метод описан в `CALIBRATION_METHOD.md`.
+The full parameters, the raw daily values and the checksums of the slices are in the neighboring
+JSON file `calibration-ukraine-bbox-2024-08.json`. The method is described in `CALIBRATION_METHOD.md`.

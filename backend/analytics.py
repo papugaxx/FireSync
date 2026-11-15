@@ -126,7 +126,7 @@ def harmonize(report, split_date):
 
 def anomaly(months, year, month, series):
     """
-    months — the result of grid_index.monthly() over several years.
+    months — the `months` list of reports.monthly() over several years.
     We take only fully loaded months so that incomplete data is not compared.
     """
     values = {m["year"]: m[series]["active_cell_days"] for m in months

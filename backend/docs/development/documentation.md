@@ -103,11 +103,11 @@ then the guide:
 
 | Topic | Original |
 |---|---|
-| Grid method | `data_pipeline/GRID_METHOD.md` (Russian) |
-| Harmonization experiment | `data_pipeline/CALIBRATION_METHOD.md` (Russian) |
+| Grid method | `data_pipeline/GRID_METHOD.md` |
+| Harmonization experiment | `data_pipeline/CALIBRATION_METHOD.md` |
 | What data is loaded right now | `data_pipeline/LIVE_STATUS.md` (a dated snapshot) |
-| Pipeline commands | `data_pipeline/README.md` (Russian) and `fires_data/cli.py` |
-| Server setup | `backend/README.md` (Russian) and the files in `backend/deploy/` |
+| Pipeline commands | `data_pipeline/README.md` and `fires_data/cli.py` |
+| Server setup | the repository `README.md` and the files in `backend/deploy/` |
 | Endpoint behavior | `main.py` (the code is the source of truth) |
 
 !!! tip "Keep volatile facts out of the guides"

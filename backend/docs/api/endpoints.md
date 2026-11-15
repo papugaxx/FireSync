@@ -7,21 +7,22 @@ Examples use `http://localhost:8000`. Responses are shortened with `...`.
 
 !!! note "About the example values"
     The structure of every response is taken from the code. The `/calendar` day example and the
-    `/harmonization` numbers are real results for August 2024 (see the project README). Other numbers
+    `/harmonization` numbers are real results for August 2024 in the rectangle `west=22, south=44, east=41, north=53`
+    (see the project README); the `ukraine` region is slightly smaller, so its numbers differ. Other numbers
     (`/status`, `/calendar/monthly`, `/cells`, `/points`) are illustrative placeholders, not real measurements.
 
 | Endpoint | Purpose |
 |---|---|
 | [`/api/...`](#frontend-endpoints) | What the fire-calendar website calls |
 | [`/health`](#get-health) | Is the server alive? |
-| [`/status`](#get-status) | What data is loaded, and is the index ready? |
+| [`/status`](#get-status) | What data is loaded, and what the NASA update is doing |
 | [`/regions`](#get-regions) | Ready-made regions |
 | [`/calendar`](#get-calendar) | Daily activity, MODIS and VIIRS |
 | [`/calendar/monthly`](#get-calendarmonthly) | Monthly activity with completeness |
 | [`/cells`](#get-cells) | Map layer (GeoJSON): active cells |
 | [`/points`](#get-points) | Individual detections, paged |
 | [`/harmonization`](#get-harmonization) | MODIS and VIIRS merged into one series, with validation |
-| [`/anomaly`](#get-anomaly) | A month versus the median of other years |
+| [`/anomaly`](#get-anomaly) | A month versus the median of earlier years |
 | [`/export.csv`](#get-exportcsv) | Download points as CSV |
 
 `GET /` redirects to `/docs`.
@@ -73,9 +74,8 @@ Ready-made regions for demos. Defined in `config.REGIONS`.
 ]
 ```
 
-`bbox` is `[west, south, east, north]`. `scope` is the pipeline data scope searched for that region. Names are
-currently in Russian. Available ids: `world`, `ukraine`, `central_africa`, `amazon`, `siberia`, `australia`,
-`california`.
+`bbox` is `[west, south, east, north]`, or `null` for the whole world. Available ids: `world`, `ukraine`,
+`argentina`, `california`, `amazonas`, `central_africa`, `siberia`, `australia`.
 
 ## GET /calendar
 
@@ -86,8 +86,7 @@ Daily activity: for each UTC day, how many 0.1° cells were active according to 
 
 | Parameter | Default | Description |
 |---|---|---|
-| `engine` | `fast` | `fast` uses the index (instant). `reference` uses the pipeline's original calculation (~25 s, up to 366 days), for cross-checking. |
-| `include_windows` | `false` | Also return `input_windows`: the NASA slices (day, source, checksum, fetch time, row count) the numbers came from. |
+| `include_windows` | `false` | Also return `input_windows`: the stored days the numbers came from (`day`, `source_code`, `origin`, `row_count`, `fetched_at`). |
 
 ```bash
 curl "http://localhost:8000/calendar?date_from=2024-08-01&date_to=2024-08-31&region=ukraine"
@@ -98,8 +97,8 @@ One element of `daily`:
 ```json
 {
   "date": "2024-08-01",
-  "modis": {"status": "loaded", "observations": 207, "active_cells": 135, "level": 2},
-  "viirs": {"status": "loaded", "observations": 861, "active_cells": 349, "level": 3},
+  "modis": {"status": "loaded", "product": "SP", "observations": 207, "active_cells": 135, "level": 2},
+  "viirs": {"status": "loaded", "product": "SP", "observations": 861, "active_cells": 349, "level": 3},
   "shared_active_cells": 68
 }
 ```
@@ -112,11 +111,10 @@ Top-level fields:
 | `coverage` | Per series: `{"loaded_days", "requested_days"}`. |
 | `totals` | Per series: `observations` and `active_cell_days` over the period. `null` if any requested day of that series is missing. |
 | `color_scale` | Per series: `{"unit": "active_cells", "levels": 5, "breaks": [q1, q2, q3]}`. Use `breaks` to draw a legend. |
-| `method` | Full description of how the numbers were computed. |
+| `method` | Full description of how the numbers were computed (including `engine`, the calculation version). |
 | `bbox` / `requested_bbox` / `area` | The area actually computed and the one requested. |
-| `engine` | Which engine produced the result. |
 
-Status values per series and day: `loaded` or `missing`. When `missing`, `observations`, `active_cells` and
+Status values per series and day: `loaded` or `missing`; `product` is `SP` (final data) or `NRT` (near real time). When `missing`, `product`, `observations`, `active_cells` and
 `level` are `null`. `shared_active_cells` is `null` unless **both** series are loaded that day.
 
 ## GET /calendar/monthly
@@ -167,7 +165,7 @@ curl "http://localhost:8000/cells?date_from=2024-08-01&date_to=2024-08-31&region
 ```json
 {
   "type": "FeatureCollection",
-  "bbox": [22.0, 44.0, 41.0, 53.0],
+  "bbox": [22.1, 44.3, 40.2, 52.4],
   "features": [
     {"type": "Feature",
      "geometry": {"type": "Point", "coordinates": [30.55, 50.45]},
@@ -215,10 +213,10 @@ curl "http://localhost:8000/points?date_from=2024-08-01&date_to=2024-08-01&regio
 {
   "limit": 2, "offset": 0, "count": 2, "has_more": true, "next_offset": 2,
   "points": [
-    {"id": "9f2c41aa07b3d812", "observed_at": "2024-08-01T00:12:00Z", "day": "2024-08-01",
-     "sensor": "MODIS", "satellite": "Aqua", "source_code": "MODIS_SP",
-     "latitude": 48.51, "longitude": 31.2, "frp_mw": 12.5, "brightness_k": 321.5,
-     "confidence_raw": "80", "daynight": "D", "type_code": 0}
+    {"observed_at": "2024-08-01T00:12:00Z", "acq_date": "2024-08-01", "acq_time": "0012",
+     "sensor": "MODIS", "satellite": "Aqua", "latitude": 48.51, "longitude": 31.2,
+     "frp_mw": 12.5, "brightness_k": 321.5, "brightness2_k": 295.1, "scan_km": 1.1, "track_km": 1.0,
+     "confidence": "80", "daynight": "D", "type": 0, "version": "6.1"}
   ]
 }
 ```
@@ -227,6 +225,9 @@ curl "http://localhost:8000/points?date_from=2024-08-01&date_to=2024-08-01&regio
 - `has_more` is `true` whenever the page is full, so the final page can still report `true` if it ended exactly
   on a page boundary. In that case the next page is simply empty.
 - `frp_mw`, `brightness_k` and other numeric fields can be `null`. A `null` is not zero power.
+- `confidence` is the MODIS percentage (as text) or the VIIRS class `l`, `n` or `h`. `type` is NASA's `type` code
+  (0 vegetation fire, 1 volcano, 2 static source, 3 offshore). `brightness_k` is MODIS `brightness` / VIIRS `bright_ti4`;
+  `brightness2_k` is `bright_t31` / `bright_ti5`.
 - With `format=geojson`, `meta` holds the paging fields and each feature's `properties` contains the same fields.
 
 ## GET /harmonization
@@ -241,7 +242,7 @@ Merges MODIS and VIIRS into one series and checks the merge on days the model ha
 | `split_date` | last third of the period | First day of the test period. Must lie inside the period and not be its first day. |
 
 ```bash
-curl "http://localhost:8000/harmonization?date_from=2024-08-01&date_to=2024-08-31&region=ukraine&split_date=2024-08-22"
+curl "http://localhost:8000/harmonization?date_from=2024-08-01&date_to=2024-08-31&west=22&south=44&east=41&north=53&split_date=2024-08-22"
 ```
 
 ```json
@@ -272,9 +273,10 @@ curl "http://localhost:8000/harmonization?date_from=2024-08-01&date_to=2024-08-3
 
 ## GET /anomaly
 
-Compares one month with the median of the same month in other years.
+Compares one month with the median of the same month in earlier years.
 
-**Parameters:** [area](overview.md#area), plus:
+**Parameters:** [area](overview.md#area), but only a ready-made `region` (or nothing, meaning the world). A custom
+`west/south/east/north` rectangle returns `400`, because the norm needs many years of data. Plus:
 
 | Parameter | Default | Description |
 |---|---|---|
@@ -291,11 +293,11 @@ Possible `status` values:
 | `status` | Meaning |
 |---|---|
 | `month_not_loaded` | The requested month is not fully loaded; nothing to compare. |
-| `insufficient_history` | Fewer than 3 other complete years. `years_available` lists what exists. |
+| `insufficient_history` | Fewer than 3 complete earlier years (only years before the requested one form the norm). `years_available` lists what exists. |
 | `ok` | Includes `median`, `anomaly_percent`, `verdict` (`above_normal`, `normal`, `below_normal`), `rank` and `rank_of`. |
 
-Every response carries `value`, `history` (value per other year) and a human-readable `message` (currently
-in Russian). If nothing at all is loaded for the area's scope the request fails with `400`.
+Every response carries `value`, `history` (`{year, value}` for each earlier year) and a human-readable `message`.
+If nothing is stored at all, the request fails with `400`.
 
 ## GET /export.csv
 
@@ -309,11 +311,11 @@ not hold it in memory.
 curl -OJ "http://localhost:8000/export.csv?date_from=2024-08-15&date_to=2024-08-15&west=30&south=46&east=36&north=50"
 ```
 
-- Response type is `text/csv; charset=utf-8`, sorted by `observed_at`.
-- Columns: `observed_at, day, sensor, satellite, source_code, latitude, longitude, frp_mw, brightness_k,
-  confidence_raw, daynight, type_code`.
+- Response type is `text/csv; charset=utf-8`. Rows come day by day (MODIS, then VIIRS), by time within each day.
+- Columns: `observed_at, acq_date, acq_time, sensor, satellite, latitude, longitude, frp_mw, brightness_k,
+  brightness2_k, scan_km, track_km, confidence, daynight, type, version`.
 - The file name looks like `firesync_ukraine_2024-08-15_2024-08-15.csv` (`area` when no region is used).
-- `X-Total-Rows` gives the row count. If more than 200 000 rows match, the request fails with `400` and asks you
+- `X-Total-Rows` gives the row count. If more than 1 000 000 rows match, the request fails with `400` and asks you
   to narrow the area or period.
 
 

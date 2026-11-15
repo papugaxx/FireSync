@@ -8,12 +8,12 @@ only reads from here.
 
 Why detections are stored per day in compressed blocks
 ------------------------------------------------------
-The archive has about 250 million MODIS + NOAA-20 detections. One SQLite row
-per detection costs 30–600 bytes (with indexes), i.e. tens of gigabytes. Here
+The archive has about 267 million MODIS + NOAA-20 detections. One SQLite row
+per detection costs 30–600 bytes (with indexes), i.e. tens to hundreds of gigabytes. Here
 all detections of one UTC day and one sensor are packed into one block: every
 column (latitude, longitude, FRP, ...) is stored as whole numbers and
-compressed separately. That is about 5–8 bytes per detection, so the whole
-archive fits into a few gigabytes, and reading a whole day takes milliseconds.
+compressed separately. That is about 11 bytes per detection, so the whole
+archive fits into about 3 GB, and reading a whole day takes milliseconds.
 
 Values are stored exactly: latitude/longitude × 100 000, FRP, brightness,
 scan and track × 100 — the precision NASA publishes.

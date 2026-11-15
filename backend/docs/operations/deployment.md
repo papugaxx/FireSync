@@ -16,7 +16,7 @@ itself in the background. The ready-made files are in `backend/deploy/`, and `se
 | Resource | Minimum |
 |---|---|
 | Memory | 2 GB |
-| Disk | 20 GB. The database is ~3 GB and grows by about 0.1 GB per month |
+| Disk | 20 GB. The database is ~3 GB and grows by less than 0.1 GB per month |
 | Domain | An A record pointing at the server |
 | NASA key | A [FIRMS MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/) for the automatic updates |
 

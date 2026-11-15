@@ -14,7 +14,7 @@ This page takes you from a fresh checkout to a running API and a built documenta
 === "Windows (PowerShell)"
 
     ```powershell
-    cd C:\Users\User\PycharmProjects\FireSync\backend
+    cd FireSync\backend
 
     python -m venv venv
     .\venv\Scripts\Activate.ps1
