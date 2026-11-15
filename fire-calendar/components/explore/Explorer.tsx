@@ -14,6 +14,7 @@ import DayCalendar, { DAY_LEVELS, DAY_STATES } from "./DayCalendar";
 import ActivityChart from "./ActivityChart";
 import BarChart, { linearTrend } from "./BarChart";
 import YearCalendar from "./YearCalendar";
+import TrustPanel from "./TrustPanel";
 import RangeReport, { type AnalysisQuery, type Box } from "./RangeReport";
 import type { Hotspot } from "@/types/api";
 import { CsvButton, PngButton } from "./DownloadButtons";
@@ -38,6 +39,7 @@ const CHARTS = [
   { id: "surface", label: "Surface", title: "Area with active fire", width: 760 },
   { id: "frp", label: "FRP", title: "Fire Radiative Power", width: 760 },
   { id: "trend", label: "Trend & Anomaly", title: "Trend & Anomaly", width: 880 },
+  { id: "trust", label: "Data & method", title: "Data & method: can these numbers be trusted?", width: 720 },
 ] as const;
 // all windows: the charts above + "Area & dates" (own rectangle, any period, downloads), opened from the filter bar
 const WINDOWS = [...CHARTS, { id: "report", label: "Area & dates", title: "Area & dates", width: REPORT_WIDTH }] as const;
@@ -103,7 +105,7 @@ export default function Explorer() {
   const monthKey = `${regionId}-${sel.year}-${sel.month}`;
   const cal = useApi(regionId, () => api.calendar(regionId));
   const mon = useApi(monthKey, () => api.month(regionId, sel.year, sel.month));
-  const hs = useApi(monthKey, () => api.hotspots(regionId, sel.year, sel.month));
+  const hs = useApi(`${monthKey}-${day ?? "all"}`, () => api.hotspots(regionId, sel.year, sel.month, day));
   const yr = useApi(`${regionId}-${sel.year}`, () => api.monthly(regionId, sel.year));
   // state of the NASA synchronisation (read once per page; the backend answers from its database)
   const sync = useApi("sync", () => api.sync());
@@ -156,6 +158,7 @@ export default function Explorer() {
   }
 
   function exportCsv() {
+    if (!sensors.modis && !sensors.viirs) return; // both sensors off: nothing is selected, so nothing is exported
     // with a backend: the real NASA detections (own coordinates, time, satellite, FRP) of the region
     const url = api.exportUrl(regionId, sel.year, sel.month, day, onlySensor);
     if (url) {
@@ -223,6 +226,7 @@ export default function Explorer() {
           body: m ? (
             <>
               <BarChart
+                label={`Area with active fire per month, ${region.name}, ${sel.year}`}
                 labels={MONTH_NUMS}
                 values={m.map((x) => x.areaKm2)}
                 color="#f39314"
@@ -244,6 +248,7 @@ export default function Explorer() {
           body: m ? (
             <>
               <BarChart
+                label={`Mean and maximum fire radiative power per month, ${region.name}, ${sel.year}`}
                 labels={MONTH_NUMS}
                 values={m.map((x) => x.frpMean)}
                 dots={m.map((x) => x.frpMax)}
@@ -262,6 +267,20 @@ export default function Explorer() {
             </>
           ) : (
             <Placeholder className="h-60" />
+          ),
+        };
+      case "trust":
+        return {
+          body: (
+            <TrustPanel
+              harmonization={cal.data?.harmonization ?? null}
+              days={mon.data?.days ?? null}
+              monthLabel={`${MONTH_NAMES[sel.month - 1]} ${sel.year}`}
+              regionName={region.name}
+              firstDay={range.firstDay}
+              lastDay={range.lastDay}
+              viirsFirstDay={range.viirsFirstDay}
+            />
           ),
         };
       case "report": {
@@ -328,6 +347,7 @@ export default function Explorer() {
               </p>
               <h4 className="mb-1 mt-6 text-sm">Yearly total and trend</h4>
               <BarChart
+                label={`Yearly total of active fire cells and trend, ${region.name}`}
                 labels={cal.data.years.map((y) => String(y.year).slice(2))}
                 values={totals}
                 color="#1f6fc0"
@@ -398,7 +418,7 @@ export default function Explorer() {
             aria-pressed={isOpen("report")}
             title="Own area, any date range, analytics and downloads"
             className={`inline-flex items-center gap-2 rounded-2xl border-2 border-accent px-4 text-sm font-medium transition ${
-              isOpen("report") ? "bg-accent text-white" : "text-accent hover:bg-accent/10"
+              isOpen("report") ? "bg-accent text-bg" : "text-accent hover:bg-accent/10"
             }`}
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -501,7 +521,7 @@ export default function Explorer() {
                   key={c.id}
                   onClick={() => toggleWindow(c.id)}
                   aria-pressed={isOpen(c.id)}
-                  className={`rounded-full border-2 border-accent px-4 py-1 text-sm transition 2xl:text-base ${isOpen(c.id) ? "bg-accent text-white" : "text-accent hover:bg-accent/10"
+                  className={`rounded-full border-2 border-accent px-4 py-1 text-sm transition 2xl:text-base ${isOpen(c.id) ? "bg-accent text-bg" : "text-accent hover:bg-accent/10"
                     }`}
                 >
                   {c.label}
@@ -521,7 +541,11 @@ export default function Explorer() {
 
       {/* what the map shows while an "Area & dates" result is on it */}
       {analysis && (
-        <div className="pointer-events-none px-4 pt-3 lg:absolute lg:bottom-6 lg:left-[450px] lg:right-6 lg:z-[1900] lg:flex lg:justify-start lg:p-0">
+        <div
+          className="pointer-events-none px-4 pt-3 lg:absolute lg:bottom-6 lg:left-[450px] lg:z-[1900] lg:flex lg:justify-start lg:p-0"
+          // keep clear of the "Area & dates" window on the right
+          style={{ right: isOpen("report") ? REPORT_WIDTH + 40 : 24 }}
+        >
           <div className="pointer-events-auto flex flex-wrap items-center gap-3 rounded-2xl border border-accent/50 bg-surface/95 px-4 py-2 text-sm shadow-xl">
             <span className="h-2.5 w-2.5 rounded-full bg-accent" aria-hidden />
             {!analysisFits ? (
@@ -539,7 +563,7 @@ export default function Explorer() {
                 {cellsRes.data.meta.truncated ? " (most active shown)" : ""}
               </span>
             )}
-            <button onClick={() => setAnalysis(null)} className="rounded-full border border-accent px-3 py-0.5 text-xs text-accent transition hover:bg-accent hover:text-white">
+            <button onClick={() => setAnalysis(null)} className="rounded-full border border-accent px-3 py-0.5 text-xs text-accent transition hover:bg-accent hover:text-bg">
               Back to {MONTH_NAMES[sel.month - 1]} {sel.year}
             </button>
           </div>

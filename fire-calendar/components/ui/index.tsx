@@ -66,7 +66,7 @@ export function Card({
 
 export function ButtonLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link href={href} className="inline-block rounded-full bg-accent px-6 py-2.5 font-medium text-white transition hover:brightness-110">
+    <Link href={href} className="inline-block rounded-full bg-accent px-6 py-2.5 font-medium text-bg transition hover:brightness-110">
       {children}
     </Link>
   );
@@ -76,7 +76,7 @@ export function Button({ className = "", ...props }: React.ButtonHTMLAttributes<
   return (
     <button
       {...props}
-      className={`rounded-full bg-accent px-6 py-2.5 font-medium text-white transition hover:brightness-110 disabled:opacity-40 ${className}`}
+      className={`rounded-full bg-accent px-6 py-2.5 font-medium text-bg transition hover:brightness-110 disabled:opacity-40 ${className}`}
     />
   );
 }
@@ -98,7 +98,7 @@ export function Toggle({
       onClick={onClick}
       aria-pressed={active}
       className="min-w-28 rounded-full border-2 px-5 py-1.5 text-sm font-medium transition"
-      style={active ? { background: color, borderColor: color, color: "#fff" } : { borderColor: color, color }}
+      style={active ? { background: color, borderColor: color, color: "#0a0e17" } : { borderColor: color, color }} // dark text: white on these fills is unreadable (contrast < 3 : 1)
     >
       {children}
     </button>

@@ -18,6 +18,8 @@ export interface BarChartProps {
   format?: (v: number) => string;
   /** show the label of every n-th tick (4 works well for 25 years) */
   labelEvery?: number;
+  /** text alternative for screen readers */
+  label?: string;
 }
 
 export default function BarChart({
@@ -31,6 +33,7 @@ export default function BarChart({
   onSelect,
   format = (v) => Math.round(v).toLocaleString("en"),
   labelEvery = 1,
+  label = "Bar chart",
 }: BarChartProps) {
   const W = 900, H = 300, P = { l: 70, r: 15, t: 20, b: 50 };
   const n = values.length;
@@ -41,7 +44,7 @@ export default function BarChart({
   const baseY = H - P.b;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[560px]" role="img">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[560px]" role="img" aria-label={label}>
       {[0.33, 0.66, 1].map((t) => (
         <g key={t}>
           <line x1={P.l} x2={W - P.r} y1={y(max * t * 0.87)} y2={y(max * t * 0.87)} stroke={C.grid} strokeWidth={1.5} strokeDasharray="3 6" />

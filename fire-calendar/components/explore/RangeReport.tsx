@@ -101,7 +101,7 @@ export default function RangeReport(props: Props) {
               <button
                 onClick={() => onDrawing(!drawing)}
                 className={`rounded-full border-2 px-3 py-1 font-medium transition ${
-                  drawing ? "border-accent bg-accent text-white" : "border-accent text-accent hover:bg-accent/10"
+                  drawing ? "border-accent bg-accent text-bg" : "border-accent text-accent hover:bg-accent/10"
                 }`}
               >
                 {drawing ? "Drag on the map… (click to cancel)" : "Draw on the map"}
