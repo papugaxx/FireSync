@@ -1,5 +1,6 @@
 fastapi>=0.110
 uvicorn[standard]>=0.29
+numpy>=2.0          # compressed day blocks and fast cell counting (store.py)
 
 # for tests
 pytest>=8

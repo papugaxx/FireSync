@@ -1,6 +1,7 @@
 // Single point of access to data.
-// While NEXT_PUBLIC_API_URL is not set, we return mocks. Once the backend is ready,
-// it is enough to put the address into .env.local; components do not need to change.
+// NEXT_PUBLIC_API_URL is the FastAPI backend (backend/frontend_api.py), e.g. http://127.0.0.1:8000.
+// `python run.py` in the repository root sets it automatically; for `npm run dev` alone copy
+// .env.example to .env.local. While it is empty, the site shows the demo data from lib/mock.ts.
 import type {
   CalendarResponse,
   HotspotsResponse,
@@ -10,15 +11,25 @@ import type {
 } from "@/types/api";
 import { mockCalendar, mockHotspots, mockMeta, mockMonth, mockMonthly } from "./mock";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
+export const USING_DEMO_DATA = !API_URL;
 
 async function get<T>(path: string, fallback: () => T): Promise<T> {
   if (!API_URL) {
     await new Promise((r) => setTimeout(r, 250)); // simulated network delay so the loading state is visible
     return fallback();
   }
-  const res = await fetch(`${API_URL}${path}`);
-  if (!res.ok) throw new Error(`API ${res.status}: ${path}`);
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, { cache: "no-store" });
+  } catch {
+    throw new Error(`the backend at ${API_URL} is not reachable. Is it running?`);
+  }
+  if (!res.ok) {
+    // the backend always answers errors as {"error": "readable text"}
+    const body = await res.json().catch(() => null);
+    throw new Error(typeof body?.error === "string" ? body.error : `API ${res.status}: ${path}`);
+  }
   return res.json() as Promise<T>;
 }
 

@@ -1,174 +1,118 @@
 # Deployment
 
-This guide installs FireSync on an Ubuntu 24.04 server: the API as a `systemd` service behind `nginx` with HTTPS,
-plus a cron job that refreshes the data. The ready-made files are in `backend/deploy/`.
+This guide puts the whole of FireSync — the website and the API — on one Ubuntu 24.04 server under one domain:
+
+```text
+https://YOUR-DOMAIN/          → website (Next.js, port 3000, service firesync-web)
+https://YOUR-DOMAIN/api/...   → API the website calls (FastAPI, port 8000, service firesync-api)
+https://YOUR-DOMAIN/docs      → interactive API documentation
+```
+
+Both programs listen only on `127.0.0.1`; nginx is the public entry point. The API downloads new NASA days by
+itself in the background. The ready-made files are in `backend/deploy/`, and `setup_server.sh` does everything below.
 
 ## What you need
 
 | Resource | Minimum |
 |---|---|
 | Memory | 2 GB |
-| Disk | 20 GB. The database is ~3 GB and grows by roughly 2 GB per month when updating the whole world |
-| Python | 3.11 or newer |
-| Domain | An `api.` name pointing at the server, for HTTPS |
-| NASA key | A [FIRMS MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/) for scheduled updates |
+| Disk | 20 GB. The database is ~3 GB and grows by about 0.1 GB per month |
+| Domain | An A record pointing at the server |
+| NASA key | A [FIRMS MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/) for the automatic updates |
 
-## 1. Packages and user
+## 1. Code, database and key
 
 ```bash
-sudo apt update && sudo apt install -y python3-venv nginx certbot python3-certbot-nginx git
-sudo adduser --disabled-password --gecos "" firesync
-sudo mkdir -p /srv/FireSync && sudo chown firesync /srv/FireSync
+sudo git clone <your repository URL> /srv/FireSync
+sudo mkdir -p /srv/FireSync/backend/data
+echo "FIRMS_MAP_KEY=your_key" | sudo tee /srv/FireSync/backend/data_pipeline/.env
 ```
 
-## 2. Code
+## 2. Copy the database { #copy-the-database }
 
-Run as the `firesync` user:
+The database (~3 GB) is not in git. Copy it from a machine that has it — much faster than importing the 50 GB
+CSV on the server — and compare the checksums.
 
-```bash
-sudo -iu firesync
-git clone <your repository URL> /srv/FireSync
-cd /srv/FireSync/backend
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt && pip install -e ./data_pipeline
-mkdir -p cache data_pipeline/var
-```
-
-The virtual environment must live at `backend/venv`: both `update.sh` and the systemd unit refer to it.
-
-## 3. Copy the database { #copy-the-database }
-
-The database (~3 GB) is not in git. Copy it from the machine that holds it, and verify it with a checksum.
-
-On the source machine:
+On your computer:
 
 ```bash
-scp path/to/backend/data_pipeline/var/fires.sqlite3 YOUR_LOGIN@SERVER:/tmp/
-shasum -a 256 path/to/backend/data_pipeline/var/fires.sqlite3      # Linux: sha256sum
+scp path/to/backend/data/firesync.sqlite3 YOUR_LOGIN@SERVER:/tmp/
+shasum -a 256 path/to/backend/data/firesync.sqlite3      # Linux: sha256sum
 ```
 
 On the server:
 
 ```bash
-sudo mv /tmp/fires.sqlite3 /srv/FireSync/backend/data_pipeline/var/
-sudo chown firesync /srv/FireSync/backend/data_pipeline/var/fires.sqlite3
-sha256sum /srv/FireSync/backend/data_pipeline/var/fires.sqlite3
+sudo mv /tmp/firesync.sqlite3 /srv/FireSync/backend/data/
+sha256sum /srv/FireSync/backend/data/firesync.sqlite3
 ```
-
-The two checksums must match. On Windows, `Get-FileHash -Algorithm SHA256 <file>` gives the same value.
 
 !!! warning "Copy a consistent snapshot"
-    Do not copy the file while a loader is writing to it. Stop the loader, or produce a snapshot with SQLite's
-    backup (`VACUUM INTO`) first.
+    Do not copy the file while the API is running on your computer (its updater may be writing). Stop it first,
+    or make a snapshot with SQLite's backup (`VACUUM INTO`).
 
-## 4. NASA key and first index
-
-Still as `firesync`:
+## 3. Install everything
 
 ```bash
-cd /srv/FireSync/backend
-echo "FIRMS_MAP_KEY=your_key" > data_pipeline/.env
-python -m fires_data init
-python grid_index.py                                     # builds the index, about a minute
-chmod +x deploy/update.sh && crontab deploy/crontab.txt  # scheduled updates, see below
-exit
+cd /srv/FireSync
+sudo bash backend/deploy/setup_server.sh YOUR-DOMAIN --https you@example.com
 ```
 
-## 5. The API as a service { #api-service }
+The script:
 
-Open `deploy/firesync-api.service` and replace `YOUR-FRONTEND-DOMAIN` in `FRONTEND_URLS` with the real
-website address (including `https://`). Then, as a sudoer:
+1. installs Python, nginx, git and Node.js 22 (Next.js 16 needs Node 20.9+);
+2. creates the `firesync` user and gives it `/srv/FireSync`;
+3. creates `backend/venv` and installs the Python packages;
+4. builds the website with `NEXT_PUBLIC_API_URL=https://YOUR-DOMAIN` (the address is built into the site);
+5. installs and starts `firesync-api` and `firesync-web` (systemd: restart on failure and after a reboot);
+6. installs the nginx site for the domain and, with `--https`, a free Let's Encrypt certificate;
+7. checks that both answer.
+
+Without `--https` the site is built for `http://YOUR-DOMAIN`; run the script again with `--https` later.
+
+## 4. Verify
 
 ```bash
-sudo cp /srv/FireSync/backend/deploy/firesync-api.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now firesync-api
+curl https://YOUR-DOMAIN/health
+curl https://YOUR-DOMAIN/api/updates/
 ```
 
-What the unit does:
+Then open `https://YOUR-DOMAIN/explore`.
 
-- Runs `uvicorn main:app` on `127.0.0.1:8000` with **2 workers** and `--proxy-headers`, as the `firesync` user.
-- Restarts automatically (`Restart=always`) and starts at boot.
-- Listens only on localhost; nginx is the public entry point.
-
-!!! info "Two workers and the background refresh"
-    Each worker runs its own auto-refresh thread. They cannot refresh at the same time because refreshes take a
-    file lock (`cache/grid_index.lock`), so extra workers cost nothing but a lock attempt.
-
-## 6. nginx and HTTPS
-
-Replace `api.YOUR-DOMAIN` in `deploy/nginx.conf`, then:
+## Updating the code
 
 ```bash
-sudo cp /srv/FireSync/backend/deploy/nginx.conf /etc/nginx/sites-available/firesync
-sudo ln -s /etc/nginx/sites-available/firesync /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d api.YOUR-DOMAIN
+cd /srv/FireSync && sudo -u firesync git pull
+sudo bash backend/deploy/setup_server.sh YOUR-DOMAIN
 ```
 
-The nginx config forwards to the API with the original `Host`, `X-Forwarded-For` and `X-Forwarded-Proto`
-headers. Two settings matter:
+The same script updates the packages, rebuilds the website and restarts both services. The database and the NASA
+key are not touched.
 
-- `proxy_read_timeout 120s`: the slow `engine=reference` calculation can take around 30 seconds.
-- `proxy_buffering off`: the CSV export is streamed, so it must not be buffered.
+## NASA updates on the server { #scheduled-updates }
 
-## 7. Verify
-
-```bash
-curl https://api.YOUR-DOMAIN/health
-curl https://api.YOUR-DOMAIN/status
-```
-
-`/status` should show `"status": "ok"` and the loaded date ranges.
-
-## Scheduled updates { #scheduled-updates }
-
-`deploy/crontab.txt` runs `deploy/update.sh` every three hours (at minute 17) and appends to
-`cache/update.log`:
-
-```text
-17 */3 * * * /srv/FireSync/backend/deploy/update.sh >> /srv/FireSync/backend/cache/update.log 2>&1
-```
-
-Each run does two steps:
-
-1. **Download.** `fires_data sync --area world --recent-days 3 --include-today --sources MODIS_NRT VIIRS_NOAA20_NRT`
-   with a request budget (`MAX_REQUESTS`, default 30) and a disk reserve (`MIN_FREE_GB`, default 5).
-2. **Index.** `python grid_index.py` recomputes only the days that changed, which takes seconds.
-
-Safety features:
-
-- `flock` on `LOCK_FILE` means an update that finds another one running logs a message and exits successfully.
-- The script exits with an error **only** if the download step fails (code 1). A paused download (code 2: request
-  budget reached) is normal and continues on the next run.
-- The API's own auto-refresh also notices the new data within `FIRESYNC_AUTO_REFRESH` seconds, so the website
-  updates without a restart.
-
-The scheduled job downloads **only NRT** data for MODIS and VIIRS NOAA-20, for the last three days. Standard
-processing (SP) data for older days has to be loaded manually with `sync`; see
-[Command line](../pipeline/cli.md#loading-history).
+The API service downloads new days in the background (`updater.py`): about a minute after start and then every
+three hours. Its state is at `/api/updates/`. To use cron instead, set `FIRESYNC_AUTO_UPDATE=0` in
+`/etc/systemd/system/firesync-api.service` and install `backend/deploy/crontab.txt`.
+Details: [Archive import and NASA updates](../pipeline/archive-and-updates.md).
 
 ## Day-to-day operations
 
 | Task | Command |
 |---|---|
 | API logs | `journalctl -u firesync-api -f` |
-| Update log | `tail -f /srv/FireSync/backend/cache/update.log` |
-| Restart the API | `sudo systemctl restart firesync-api` |
-| Service status | `sudo systemctl status firesync-api` |
-| Check the cron entry | `sudo -u firesync crontab -l` |
-| Rebuild the index from scratch | stop the API, delete `cache/grid_index.sqlite3`, run `python grid_index.py` |
-| Data status | `cd data_pipeline && python -m fires_data status` |
+| Website logs | `journalctl -u firesync-web -f` |
+| Restart | `sudo systemctl restart firesync-api firesync-web` |
+| Status | `systemctl status firesync-api firesync-web` |
+| Update state | `curl http://127.0.0.1:8000/api/updates/` |
+| One NASA update now | `cd /srv/FireSync/backend && sudo -u firesync venv/bin/python updater.py` |
 
-## Deploying a code update
+## Files in `backend/deploy/`
 
-```bash
-sudo -iu firesync
-cd /srv/FireSync && git pull
-cd backend && source venv/bin/activate
-pip install -r requirements.txt && pip install -e ./data_pipeline
-exit
-sudo systemctl restart firesync-api
-```
-
-If `INDEX_VERSION` in `grid_index.py` changed, the index rebuilds itself on the next start (about a minute during
-which data endpoints return `503`).
+| File | Purpose |
+|---|---|
+| `setup_server.sh` | installs or updates everything (above) |
+| `firesync-api.service` | systemd unit of the API (one uvicorn worker, which also runs the NASA updates) |
+| `firesync-web.service` | systemd unit of the website (`next start`) |
+| `nginx.conf` | one domain: `/api/`, `/docs` and the general endpoints → API, everything else → website |
+| `update.sh`, `crontab.txt` | optional cron alternative to the background updates |

@@ -1,20 +1,24 @@
-# systemd: the API runs continuously and comes back up by itself after a server reboot.
-# Installation:
+# systemd: the API runs continuously, downloads new NASA days in the background
+# (updater.py) and comes back up by itself after a reboot.
+# Installed by deploy/setup_server.sh (YOUR-DOMAIN is replaced there). By hand:
 #   sudo cp deploy/firesync-api.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now firesync-api
 # Logs:  journalctl -u firesync-api -f
 
 [Unit]
 Description=FireSync API (FastAPI)
-After=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=firesync
 WorkingDirectory=/srv/FireSync/backend
-# Address of the website (frontend) that is allowed to call the API
-Environment=FRONTEND_URLS=https://YOUR-FRONTEND-DOMAIN
-ExecStart=/srv/FireSync/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers
+# Address of the website that is allowed to call the API (CORS)
+Environment=FRONTEND_URLS=https://YOUR-DOMAIN,http://YOUR-DOMAIN
+Environment=PYTHONUNBUFFERED=1
+# One process is enough (answers are cached) and keeps exactly one NASA updater
+ExecStart=/srv/FireSync/backend/venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers
 Restart=always
 RestartSec=3
 

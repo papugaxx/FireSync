@@ -9,7 +9,7 @@ This page describes the conventions shared by all endpoints. Each endpoint is do
 | Environment | Base URL |
 |---|---|
 | Local development | `http://localhost:8000` |
-| Production | `https://api.YOUR-DOMAIN` (see [Deployment](../operations/deployment.md)) |
+| Production | `https://YOUR-DOMAIN` — the API is under `/api/`, `/docs` and the general paths (see [Deployment](../operations/deployment.md)) |
 
 All endpoints are `GET`. The API is read-only.
 
@@ -115,13 +115,14 @@ Limits protect the server from heavy requests. They live in `config.py`.
 
 | Endpoint | Maximum period | Other limits |
 |---|---|---|
-| `/calendar` (`engine=fast`) | 3660 days (~10 years) | |
-| `/calendar` (`engine=reference`) | 366 days | Slow: tens of seconds |
-| `/calendar/monthly` | 14 640 days (40 years) | |
-| `/cells` | 3660 days | At most 20 000 cells; `truncated` flag if cut |
+| `/calendar` | 3660 days (~10 years) for a region | Own rectangle: 366 days |
+| `/calendar/monthly` | 14 640 days (40 years) for a region | Own rectangle: 366 days |
+| `/cells` | 92 days | At most 20 000 cells; `truncated` flag if cut |
 | `/points` | 7 days | At most 5000 points per page |
-| `/harmonization` | 3660 days | |
-| `/export.csv` | 31 days | At most 200 000 rows |
+| `/harmonization` | 3660 days for a region | Own rectangle: 366 days |
+| `/export.csv` | 31 days | At most 1 000 000 rows (streamed) |
+| `/api/hotspots/` | one month | At most 10 000 cell-days; strongest per day kept, `truncated` and `total` |
+| `/api/export/` | one month or one day | At most 1 000 000 rows |
 | `/anomaly` | n/a (uses a year and month) | Needs at least 3 other complete years |
 
 Exceeding a limit returns `400` with a message that states the maximum.

@@ -45,9 +45,10 @@ nav:
   - HTTP API:
       - Overview: api/overview.md
       - Endpoints: api/endpoints.md
-  - Data pipeline:
-      - Command line: pipeline/cli.md
-      - Data model: pipeline/data-model.md
+  - Data:
+      - Archive import and NASA updates: pipeline/archive-and-updates.md
+      - Partner pipeline command line: pipeline/cli.md
+      - Partner pipeline data model: pipeline/data-model.md
   - Operations:
       - Configuration: operations/configuration.md
       - Deployment: operations/deployment.md
@@ -58,8 +59,11 @@ nav:
       - Writing documentation: development/documentation.md
   - API reference:
       - main: reference/main.md
-      - grid_index: reference/grid_index.md
+      - frontend_api: reference/frontend_api.md
+      - store: reference/store.md
+      - reports: reference/reports.md
+      - importer: reference/importer.md
+      - updater: reference/updater.md
       - analytics: reference/analytics.md
-      - db: reference/db.md
       - config: reference/config.md
       - Data pipeline: reference/pipeline.md

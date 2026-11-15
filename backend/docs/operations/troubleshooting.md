@@ -13,13 +13,12 @@
 
 | Symptom | Cause and fix |
 |---|---|
-| `503` with an "index is still being built" message (Russian text) | The fast index does not exist yet (first run) or an old index version is being rebuilt. Wait a minute and retry; the response has `Retry-After: 30`. Or run `python grid_index.py`. |
-| `503` "database unavailable" | The pipeline database file was not found. Check that `data_pipeline/var/fires.sqlite3` exists, or set `FIRMS_DB_PATH`. `/status` shows `partner_database.found`. |
+| `503` "The fire database has not been created yet" | `data/firesync.sqlite3` does not exist. Run `python importer.py` (or copy the file from a teammate), or set `FIRESYNC_DB_PATH`. |
 | `400` period too long | Each endpoint has a maximum period. See [limits](../api/overview.md#limits). Split the request into several. |
 | `400` "either region or west/south/east/north" | Both a `region` and bounding-box values were sent. Send only one. |
 | `400` "all four boundaries are needed" | A bounding box needs `west`, `south`, `east` **and** `north`. |
 | `400` "west < east and south < north" | The order is longitude first, then latitude. Check that you did not send `[south, west, north, east]`. |
-| `400` area outside the loaded scope | The rectangle goes beyond the extent of the downloaded data scope. |
+| `400` "For an own rectangle the period is limited" | Own rectangles are computed from the detections; use a ready-made region for long periods. |
 | `422` with a `details` list | A parameter is malformed or out of range, for example not `YYYY-MM-DD`, or `west=500`. |
 | Browser shows a CORS error | The site's address is not in `FRONTEND_URLS`. Add it (comma-separated, with scheme and without a trailing slash) and restart the API. |
 
@@ -27,24 +26,25 @@
 
 | Symptom | Explanation |
 |---|---|
-| Calendar values are `null` | The day is **not loaded** in the database. This does not mean "no fires". Check `coverage` in the response or `fires_data status`. |
+| Calendar values are `null` | The day is **not stored** (no data, or an instrument outage). This does not mean "no fires". Check `coverage` in the response or `/status`. |
 | `totals` is `null` | At least one requested day of that series is missing. Narrow the period to loaded days. |
-| `/anomaly` returns `insufficient_history` | It needs at least 3 other years with complete data for that month. Load more history; see [Command line](../pipeline/cli.md#loading-history). |
+| `/anomaly` returns `insufficient_history` | It needs at least 3 earlier years with complete data for that month. |
 | `/anomaly` returns `month_not_loaded` | The requested month is not completely loaded. |
 | MODIS and VIIRS differ a lot | Expected: VIIRS detects more cells. That is why [harmonization](../concepts/harmonization.md) exists. |
 | Numbers differ slightly from the pipeline's own calendar for a custom rectangle | The API expands rectangles to whole 0.1° cells; the pipeline filters by the exact rectangle. See [Regions are whole cells](../concepts/grid-and-calendar.md#regions-are-whole-cells). Compare using a rectangle that lies on grid lines. |
-| New NASA data does not appear | Check `/status` → `index.auto_refresh` for `last_error`. Run `python grid_index.py` to force a refresh and read its output. |
-| `/calendar?engine=reference` is slow | That is expected: it recomputes from raw points (~25 s for a month of world data). Use `fast` normally. |
+| New NASA data does not appear | Check `/api/updates/` (`update.message`, `last_completed_run.stopped_because`). Run `python updater.py` and read its output. Without `FIRMS_MAP_KEY` in `data_pipeline/.env` nothing is downloaded. |
+| The website still shows demo data | `fire-calendar/.env.local` needs `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`; restart `npm run dev`. |
 
-## Updates and the index
+## Import and updates
 
 | Symptom | Cause and fix |
 |---|---|
-| `update.sh` logs "update already running" | Another update holds the lock. This is normal and the script exits successfully. If it persists, check for a stuck process and the lock file (`LOCK_FILE`). |
-| `sync` exits with code `2` | It paused after reaching the request budget or the free-disk reserve. Re-run the same command to continue. |
-| Refresh returns `{"status": "busy"}` | Another refresh is in progress (another worker or process). Try again shortly. |
-| The index seems inconsistent | It is a cache. Stop the API, delete `cache/grid_index.sqlite3*`, then run `python grid_index.py`. The pipeline database is untouched. |
-| Windows: two refreshes at once | Cross-process locking uses `fcntl`, which Windows does not have. Do not run `grid_index.py` while the API's auto-refresh is active, or set `FIRESYNC_AUTO_REFRESH=0` while developing. |
+| The importer stopped (Ctrl+C, power, disk) | Run the same command again: it continues from the last saved point. Nothing is counted twice. |
+| `Stopped: the disk is almost full` | Free some space (the database grows to about 3 GB), then run the importer again. |
+| An update says "Another update is already running" | A run from the API thread or another terminal holds the lock. This is normal. |
+| An update stops at the request limit | Normal during catch-up; the next run starts after 10 minutes and continues. |
+| An update stops with "quota" | The NASA transaction quota is nearly used. The next run continues after the quota window resets. |
+| Region numbers look stale after editing `config.REGIONS` | The region tables are rebuilt in the background after a restart (a few minutes). |
 
 ## Documentation build
 

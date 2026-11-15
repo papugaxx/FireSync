@@ -23,8 +23,8 @@ cell_y = min(1799, floor((latitude  +  90) / 0.1))
 ```
 
 A point exactly on a grid line belongs to the cell to its right / above. The extreme edges (+180° and +90°)
-belong to the last cell. The SQL in `grid_index.py` and the pipeline's `analytics.py` use the same formula,
-which is what makes the fast index match the reference calculation exactly.
+belong to the last cell. `store.py` (on coordinates stored × 100 000) and the pipeline's `analytics.py` use the same formula,
+which is what makes the database match the reference calculation exactly.
 
 ## What counts as "active"
 
@@ -55,9 +55,9 @@ NASA provides each product in two processing levels:
 - **SP** (standard processing): final, reprocessed data.
 - **NRT** (near real time): available within hours but may later be superseded.
 
-For each day and satellite family, the calendar uses SP when it is loaded and falls back to NRT otherwise. A
-loaded but empty SP slice still wins over NRT. FireSync does not re-implement this rule; `grid_index.py`
-imports it from the pipeline (`fires_data.store._canonical_cte`) so both always agree.
+For each day and satellite family, FireSync stores exactly one product: SP when NASA has it, otherwise NRT.
+When SP appears later, the NRT day is replaced (`updater.py`); the archive import keeps only SP rows when a day
+has both. The two are never added together.
 
 ## Missing versus zero
 

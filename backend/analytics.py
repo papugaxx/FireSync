@@ -132,24 +132,24 @@ def anomaly(months, year, month, series):
     values = {m["year"]: m[series]["active_cell_days"] for m in months
               if m["month_number"] == month and m[series]["status"] == "complete"}
     current = values.get(year)
-    history = {y: v for y, v in values.items() if y != year}
+    history = {y: v for y, v in values.items() if y < year}   # the norm uses earlier years only
     result = {"year": year, "month": month, "series": series, "unit": "active_cell_days",
               "value": current, "years_available": sorted(values),
               "history": [{"year": y, "value": v} for y, v in sorted(history.items())]}
 
     if current is None:
         result.update(status="month_not_loaded",
-                      message="Этот месяц загружен не полностью — сравнивать нечего.")
+                      message="This month is not fully stored, so there is nothing to compare.")
         return result
     if len(history) < MIN_HISTORY_YEARS:
         result.update(status="insufficient_history",
-                      message=f"Для нормы нужно минимум {MIN_HISTORY_YEARS} прошлых года с полными данными, "
-                              f"а есть {len(history)}. Нужно догрузить историю.")
+                      message=f"A norm needs at least {MIN_HISTORY_YEARS} other years with complete data for "
+                              f"this month; there are {len(history)}.")
         return result
 
     normal = median(history.values())
     percent = round((current - normal) / normal * 100, 1) if normal else None
-    rank = 1 + sum(1 for v in history.values() if v > current)
+    rank = 1 + sum(1 for v in history.values() if v > current)   # among this year and the earlier ones
     if percent is None:
         verdict = "above_normal" if current > 0 else "normal"
     elif percent >= 25:
@@ -159,8 +159,8 @@ def anomaly(months, year, month, series):
     else:
         verdict = "normal"
     result.update(status="ok", median=normal, anomaly_percent=percent, verdict=verdict,
-                  rank=rank, rank_of=len(values),
-                  message=f"{rank}-е место из {len(values)} лет по активности в этом месяце.")
+                  rank=rank, rank_of=len(history) + 1,
+                  message=f"Rank {rank} of {len(history) + 1} years by activity in this month.")
     return result
 
 

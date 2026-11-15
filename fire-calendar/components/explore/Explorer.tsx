@@ -29,7 +29,7 @@ const CHARTS = [
   { id: "monthly", label: "Monthly activity", title: "Monthly activity over the year", width: 820 },
   { id: "surface", label: "Surface", title: "Area with active fire", width: 760 },
   { id: "frp", label: "FRP", title: "Fire Radiative Power", width: 760 },
-  { id: "trend", label: "Trend & Anomaly", title: "Trend & Anomaly 2001–2025", width: 880 },
+  { id: "trend", label: "Trend & Anomaly", title: "Trend & Anomaly", width: 880 },
 ] as const;
 type ChartId = (typeof CHARTS)[number]["id"];
 
@@ -55,13 +55,17 @@ export default function Explorer() {
   const [mode, setMode] = useState<"count" | "anomaly">("count");
 
   // --- data ---
-  const region = REGIONS.find((r) => r.id === regionId)!;
+  // regions and years come from the backend (falls back to the demo list without a backend)
+  const meta = useApi("meta", () => api.meta());
+  const regions = meta.data?.regions.length ? meta.data.regions : REGIONS;
+  const years = meta.data?.years.length ? meta.data.years : YEARS;
+  const region = regions.find((r) => r.id === regionId) ?? regions[0];
   const monthKey = `${regionId}-${sel.year}-${sel.month}`;
   const cal = useApi(regionId, () => api.calendar(regionId));
   const mon = useApi(monthKey, () => api.month(regionId, sel.year, sel.month));
   const hs = useApi(monthKey, () => api.hotspots(regionId, sel.year, sel.month));
   const yr = useApi(`${regionId}-${sel.year}`, () => api.monthly(regionId, sel.year));
-  const error = cal.error ?? mon.error ?? hs.error ?? yr.error ?? null;
+  const error = meta.error ?? cal.error ?? mon.error ?? hs.error ?? yr.error ?? null;
 
   // map points, filtered by day, sensors and FRP range
   const points = useMemo(() => {
@@ -69,6 +73,8 @@ export default function Explorer() {
     return (hs.data?.hotspots ?? []).filter((h) => {
       if (day && h.date !== day) return false;
       const sensorOk = h.seenBy === "BOTH" ? sensors.modis || sensors.viirs : h.seenBy === "MODIS" ? sensors.modis : sensors.viirs;
+      // unknown FRP is not a measured zero: such points are shown only while the filter starts at 0
+      if (h.frp === null) return sensorOk && lo === 0;
       return sensorOk && h.frp >= lo && (hi >= FRP_MAX || h.frp <= hi);
     });
   }, [hs.data, day, sensors, frp]);
@@ -159,7 +165,8 @@ export default function Explorer() {
           ),
         };
       case "trend": {
-        const totals = cal.data?.years.map((y) => y.months.reduce<number>((a, v) => a + (v ?? 0), 0)) ?? [];
+        // only years with all 12 months complete get a total: a partial year is not a quiet year
+        const totals = cal.data?.years.map((y) => (y.months.every((v) => v !== null) ? y.months.reduce<number>((a, v) => a + (v ?? 0), 0) : null)) ?? [];
         return {
           actions: (
             <>
@@ -207,7 +214,7 @@ export default function Explorer() {
         <Panel className="pointer-events-auto flex flex-wrap gap-3 p-2.5">
           <Field label="Region">
             <Select value={regionId} onChange={(e) => (setRegionId(e.target.value), setDay(null))}>
-              {REGIONS.map((r) => (
+              {regions.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
                 </option>
@@ -216,7 +223,7 @@ export default function Explorer() {
           </Field>
           <Field label="Year">
             <Select value={sel.year} onChange={(e) => pick({ year: +e.target.value })}>
-              {YEARS.map((y) => (
+              {years.map((y) => (
                 <option key={y}>{y}</option>
               ))}
             </Select>
@@ -253,6 +260,7 @@ export default function Explorer() {
           </div>
           <p className="mt-2 text-sm">
             {hs.data ? `${points.length.toLocaleString("en")} hotspots on the map` : "Loading hotspots…"}
+            {hs.data?.truncated ? ` (strongest of ${hs.data.total?.toLocaleString("en")} active cell-days)` : ""}
             {day ? ` · ${day}` : " · whole month"}
           </p>
           {day ? (

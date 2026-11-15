@@ -1,5 +1,6 @@
-// API response types. Agreement with the backend (Django), see API.md.
-// null = "no data" (the instrument was not working), 0 = data exists, no fires.
+// API response types. Agreement with the backend: backend/frontend_api.py (FastAPI).
+// null = "no data" (not observed / month incomplete), 0 = data exists, no fires.
+// The backend sends a few extra fields (coverage, units, raw values); only the ones used are typed here.
 
 export type Sensor = "MODIS" | "VIIRS";
 
@@ -25,12 +26,12 @@ export interface CalendarYear {
 export interface CalendarResponse {
   region: string;
   years: CalendarYear[];
-  /** median for each month across all years */
-  median: number[];
+  /** median for each month across all complete years; null when fewer than 3 years */
+  median: (number | null)[];
   harmonization: {
     method: string;
     status: "validated" | "draft";
-    r2: number;
+    r2: number | null;
   };
 }
 
@@ -55,7 +56,8 @@ export interface Hotspot {
   date: string;
   /** which instrument saw this cell */
   seenBy: "MODIS" | "VIIRS" | "BOTH";
-  frp: number;
+  /** strongest detection in the cell that day, MW; null if NASA gave no FRP */
+  frp: number | null;
 }
 
 export interface HotspotsResponse {
@@ -63,6 +65,9 @@ export interface HotspotsResponse {
   from: string;
   to: string;
   hotspots: Hotspot[];
+  /** all active cell-days of the selection (hotspots may hold only the strongest of them) */
+  total?: number;
+  truncated?: boolean;
 }
 
 /** "Activity by month" chart: both lines on one scale (VIIRS is already harmonized). */

@@ -4,24 +4,31 @@ Harmonized MODIS + VIIRS burning activity calendar. NASA Space Apps Challenge 20
 
 ## Запуск
 
+Проще всего — всё сразу (бэкенд + сайт) из корня репозитория:
+
 ```bash
+python3 run.py          # Windows: py run.py
+```
+
+Только сайт:
+
+```bash
+cp .env.example .env.local     # адрес бэкенда: NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 npm install
 npm run dev
 ```
 
 - `http://localhost:3000` — лендинг
-- `http://localhost:3000/explore` — прототип календаря (пока на тестовых данных)
+- `http://localhost:3000/explore` — календарь на настоящих данных NASA FIRMS
 
 ## Подключение бэкенда
 
-Скопируй `.env.example` в `.env.local` и укажи адрес Django:
+Бэкенд — FastAPI (`../backend`), адреса `/api/...` описаны в `../backend/frontend_api.py`,
+форматы ответов — в `./types/api.ts`. Адрес задаёт `NEXT_PUBLIC_API_URL`.
+Если переменная пустая, `./lib/api.ts` отдаёт демо-данные из `lib/mock.ts`.
 
-```
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-Пока переменная пустая, `./lib/api.ts` отдаёт моки из `lib/mock.ts`.
-Форматы ответов описаны в `./types/api.ts`.
+Для сервера адрес вшивается при сборке: `NEXT_PUBLIC_API_URL=https://ваш-домен npm run build`
+(см. `../backend/deploy/setup_server.sh`).
 
 ## Структура
 

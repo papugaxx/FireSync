@@ -85,7 +85,7 @@ export default function FireMap({ region, hotspots }: { region: Region; hotspots
         fillColor: FIRE_COLOR,
         fillOpacity: 0.9,
       })
-        .bindTooltip(`${h.date} · ${SENSOR_LABEL[h.seenBy]} · FRP ${h.frp} MW`)
+        .bindTooltip(`${h.date} · ${SENSOR_LABEL[h.seenBy]} · FRP ${h.frp === null ? "unknown" : `${h.frp} MW`}`)
         .addTo(layer);
     }
   }, [hotspots]);

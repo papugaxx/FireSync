@@ -94,16 +94,21 @@ export default function BarChart({
   );
 }
 
-/** Linear regression: values of the trend line at the first and last points. */
-export function linearTrend(values: number[]): [number, number] {
-  const n = values.length;
-  const mx = (n - 1) / 2;
-  const my = values.reduce((a, b) => a + b, 0) / n;
+/**
+ * Linear regression: values of the trend line at the first and last points.
+ * Missing values (null) are skipped, not counted as zero; fewer than 2 values → no line.
+ */
+export function linearTrend(values: (number | null)[]): [number, number] | undefined {
+  const points = values.flatMap((v, i) => (v === null ? [] : [{ x: i, y: v }]));
+  if (points.length < 2) return undefined;
+  const mx = points.reduce((a, p) => a + p.x, 0) / points.length;
+  const my = points.reduce((a, p) => a + p.y, 0) / points.length;
   let num = 0, den = 0;
-  values.forEach((v, i) => {
-    num += (i - mx) * (v - my);
-    den += (i - mx) ** 2;
+  points.forEach(({ x, y }) => {
+    num += (x - mx) * (y - my);
+    den += (x - mx) ** 2;
   });
   const k = den ? num / den : 0;
-  return [my - k * mx, my + k * (n - 1 - mx)];
+  const last = values.length - 1;
+  return [my - k * mx, my + k * (last - mx)];
 }
