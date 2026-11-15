@@ -14,6 +14,7 @@ import DayCalendar, { DAY_LEVELS, DAY_STATES } from "./DayCalendar";
 import ActivityChart from "./ActivityChart";
 import BarChart, { linearTrend } from "./BarChart";
 import YearCalendar from "./YearCalendar";
+import TrustPanel from "./TrustPanel";
 import RangeReport, { type AnalysisQuery, type Box } from "./RangeReport";
 import type { Hotspot } from "@/types/api";
 import { CsvButton, PngButton } from "./DownloadButtons";
@@ -38,6 +39,7 @@ const CHARTS = [
   { id: "surface", label: "Surface", title: "Area with active fire", width: 760 },
   { id: "frp", label: "FRP", title: "Fire Radiative Power", width: 760 },
   { id: "trend", label: "Trend & Anomaly", title: "Trend & Anomaly", width: 880 },
+  { id: "trust", label: "Data & method", title: "Data & method: can these numbers be trusted?", width: 720 },
 ] as const;
 // all windows: the charts above + "Area & dates" (own rectangle, any period, downloads), opened from the filter bar
 const WINDOWS = [...CHARTS, { id: "report", label: "Area & dates", title: "Area & dates", width: REPORT_WIDTH }] as const;
@@ -103,7 +105,7 @@ export default function Explorer() {
   const monthKey = `${regionId}-${sel.year}-${sel.month}`;
   const cal = useApi(regionId, () => api.calendar(regionId));
   const mon = useApi(monthKey, () => api.month(regionId, sel.year, sel.month));
-  const hs = useApi(monthKey, () => api.hotspots(regionId, sel.year, sel.month));
+  const hs = useApi(`${monthKey}-${day ?? "all"}`, () => api.hotspots(regionId, sel.year, sel.month, day));
   const yr = useApi(`${regionId}-${sel.year}`, () => api.monthly(regionId, sel.year));
   // state of the NASA synchronisation (read once per page; the backend answers from its database)
   const sync = useApi("sync", () => api.sync());
@@ -156,6 +158,7 @@ export default function Explorer() {
   }
 
   function exportCsv() {
+    if (!sensors.modis && !sensors.viirs) return; // both sensors off: nothing is selected, so nothing is exported
     // with a backend: the real NASA detections (own coordinates, time, satellite, FRP) of the region
     const url = api.exportUrl(regionId, sel.year, sel.month, day, onlySensor);
     if (url) {
@@ -264,6 +267,20 @@ export default function Explorer() {
             </>
           ) : (
             <Placeholder className="h-60" />
+          ),
+        };
+      case "trust":
+        return {
+          body: (
+            <TrustPanel
+              harmonization={cal.data?.harmonization ?? null}
+              days={mon.data?.days ?? null}
+              monthLabel={`${MONTH_NAMES[sel.month - 1]} ${sel.year}`}
+              regionName={region.name}
+              firstDay={range.firstDay}
+              lastDay={range.lastDay}
+              viirsFirstDay={range.viirsFirstDay}
+            />
           ),
         };
       case "report": {

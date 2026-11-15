@@ -54,8 +54,9 @@ export const api = {
   monthly: (region: string, year: number) =>
     get<MonthlyResponse>(`/api/monthly/?region=${region}&year=${year}`, () => mockMonthly(region, year)),
 
-  hotspots: (region: string, year: number, month: number) =>
-    get<HotspotsResponse>(`/api/hotspots/?region=${region}&year=${year}&month=${month}`, () =>
+  /** `day` given → the server returns THAT day (the month list may be cut to the strongest cell-days). */
+  hotspots: (region: string, year: number, month: number, day?: string | null) =>
+    get<HotspotsResponse>(`/api/hotspots/?region=${region}&year=${year}&month=${month}${day ? `&day=${day}` : ""}`, () =>
       mockHotspots(region, year, month),
     ),
 

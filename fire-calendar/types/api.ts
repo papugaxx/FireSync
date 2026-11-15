@@ -51,6 +51,13 @@ export interface CalendarResponse {
     method: string;
     status: "validated" | "draft";
     r2: number | null;
+    /** k in MODIS ≈ k × VIIRS NOAA-20 (fitted on the earlier paired days) */
+    coefficient?: number | null;
+    /** improved_on_holdout | not_improved | insufficient_data … */
+    experiment_status?: string;
+    fit_period?: [string | null, string | null];
+    holdout_period?: [string | null, string | null];
+    holdout_mae?: { raw_viirs: number | null; scaled_viirs: number | null; training_mean_baseline: number | null };
   };
 }
 

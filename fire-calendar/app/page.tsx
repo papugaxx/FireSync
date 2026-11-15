@@ -18,7 +18,7 @@ const cardsTheProblem = [
 ];
 
 const cardsHowItWorks = [
-  { title: "Collect", text: "Hotspots from NASA FIRMS, industrial sources filtered out." },
+  { title: "Collect", text: "MODIS and VIIRS hotspots from the NASA FIRMS archive and its daily updates." },
   { title: "Grid", text: "Both sensors on one 0.1° grid, counted as active cells." },
   { title: "Harmonize", text: "VIIRS fitted to the MODIS scale and validated." },
   { title: "Calendar", text: "One series from 2000 to today with anomalies." },

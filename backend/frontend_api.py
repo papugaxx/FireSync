@@ -303,7 +303,9 @@ def monthly(region: str = "world", year: int = 2024):
     with _conn() as conn:
         def build():
             cal = calibration(conn, region)
-            k = cal["coefficient"]
+            # same policy as /api/calendar/: VIIRS is put on the MODIS scale ONLY with a k validated on
+            # held-out days; otherwise "viirs" stays empty and the raw VIIRS value is in "viirs_raw"
+            k = cal["coefficient"] if cal["validated"] else None
             report = reports.monthly(conn, where, date(year, 1, 1), date(year, 12, 31))
             months = []
             for m in report["months"]:
