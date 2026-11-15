@@ -20,8 +20,9 @@ export const DAY_LEVELS = [
 
 /** How days WITHOUT a value are drawn: the reason matters (see DayStatus in types/api.ts). */
 export const DAY_STATES = [
-  { key: "pending", label: "Downloading", className: "border border-dashed border-accent text-muted" },
-  { key: "unavailable", label: "Not published by NASA yet", className: "text-muted/50 line-through" },
+  // turquoise stripes, the same as a month that is still loading in the year × month calendar
+  { key: "pending", label: "Downloading", className: "bg-[repeating-linear-gradient(135deg,rgb(23_182_217/0.45)_0_3px,transparent_3px_7px)] text-white" },
+  { key: "unavailable", label: "Not published", className: "text-muted/50 line-through" },
   { key: "no_data", label: "No observations", className: "text-muted/40" },
 ] as const;
 

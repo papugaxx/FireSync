@@ -23,6 +23,12 @@ export const REGIONS: Region[] = [
 const NOW = new Date();
 export const YEARS = Array.from({ length: NOW.getUTCFullYear() - 1999 }, (_, i) => 2000 + i);
 
+/** Same coverage as the real database: MODIS from 1 Nov 2000, VIIRS NOAA-20 from 1 Apr 2018. */
+export const MOCK_COVERAGE = {
+  modis: { first_day: "2000-11-01", last_day: NOW.toISOString().slice(0, 10) },
+  viirs: { first_day: "2018-04-01", last_day: NOW.toISOString().slice(0, 10) },
+};
+
 // Seasonality: which month is the fire peak (0 = January) and how strong it is
 const SEASON: Record<string, { peak: number; second?: number; scale: number }> = {
   world: { peak: 7, second: 1, scale: 60000 },
@@ -64,7 +70,7 @@ function median(xs: number[]) {
 }
 
 export function mockMeta(): MetaResponse {
-  return { regions: REGIONS, years: YEARS };
+  return { regions: REGIONS, years: YEARS, data: MOCK_COVERAGE };
 }
 
 export function mockCalendar(regionId: string): CalendarResponse {
@@ -74,6 +80,8 @@ export function mockCalendar(regionId: string): CalendarResponse {
     const months = Array.from({ length: 12 }, (_, m) => {
       // there is no data for future months
       if (year > NOW.getUTCFullYear() || (year === NOW.getUTCFullYear() && m >= NOW.getUTCMonth())) return null;
+      // and nothing before MODIS started (November 2000)
+      if (year === 2000 && m < 10) return null;
       return Math.round(monthWeight(regionId, m) * yearFactor * (0.6 + r() * 0.8));
     });
     return { year, months };
@@ -95,10 +103,10 @@ export function mockMonth(regionId: string, year: number, month: number): MonthR
   const base = monthWeight(regionId, month - 1) / 30;
   const days = Array.from({ length: daysInMonth }, (_, i) => {
     const date = `${year}-${String(month).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`;
-    const missing = r() < 0.03;
+    const missing = r() < 0.03 || date < MOCK_COVERAGE.modis.first_day;
     const burst = r() < 0.1 ? 3 : 1;
     const modis = missing ? null : Math.round(base * burst * r() * 2);
-    const viirs = year < 2012 ? null : Math.round((modis ?? base) * (2.2 + r()));
+    const viirs = date < MOCK_COVERAGE.viirs.first_day ? null : Math.round((modis ?? base) * (2.2 + r()));
     const harmonized = modis ?? (viirs !== null ? Math.round(viirs / 2.6) : null);
     return { date, modis, viirs, harmonized, status: (missing ? "no_data" : "complete") as "no_data" | "complete" };
   });
@@ -128,7 +136,7 @@ export function mockHotspots(regionId: string, year: number, month: number): Hot
       lat,
       lon,
       date: `${year}-${String(month).padStart(2, "0")}-${String(1 + Math.floor(r() * 28)).padStart(2, "0")}`,
-      seenBy: (year < 2012 ? "MODIS" : roll < 0.15 ? "MODIS" : roll < 0.6 ? "VIIRS" : "BOTH") as
+      seenBy: (year < 2018 ? "MODIS" : roll < 0.15 ? "MODIS" : roll < 0.6 ? "VIIRS" : "BOTH") as
         | "MODIS"
         | "VIIRS"
         | "BOTH",
@@ -157,8 +165,8 @@ export function mockMonthly(regionId: string, year: number): MonthlyResponse {
     months: row.months.map((v, i) => ({
       month: i + 1,
       modis: v,
-      // VIIRS after harmonization is close to MODIS; before 2012 VIIRS was not flying yet
-      viirs: v === null || year < 2012 ? null : Math.round(v * (0.85 + r() * 0.3)),
+      // VIIRS after harmonization is close to MODIS; VIIRS NOAA-20 data starts in April 2018
+      viirs: v === null || year < 2018 ? null : Math.round(v * (0.85 + r() * 0.3)),
       // area: ~100 km² per 0.1° cell (at mid latitudes)
       areaKm2: v === null ? null : v * 100,
       frpMean: v === null ? null : Math.round(15 + r() * 25 + (v / 1000) * 3),

@@ -29,6 +29,8 @@ export type DayStatus = "complete" | "partial" | "pending" | "unavailable" | "no
 export interface MetaResponse {
   regions: Region[];
   years: number[];
+  /** what the database holds per sensor ("modis", "viirs"): first and last stored UTC day */
+  data?: Record<string, { first_day: string | null; last_day: string | null }>;
 }
 
 /** "Year × month" heatmap: harmonized active cells. */
