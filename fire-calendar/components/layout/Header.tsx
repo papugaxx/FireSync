@@ -10,7 +10,7 @@ const NAV = [
 ];
 
 const outlineBtn =
-  "rounded-full border-2 border-accent px-6 py-2 text-sm transition hover:bg-accent hover:text-bg";
+  "min-w-40 rounded-full border-2 border-accent px-6 py-2 text-center text-sm transition hover:bg-accent hover:text-bg"; // same width on every page
 
 export default function Header() {
   const isExplore = usePathname().startsWith("/explore");

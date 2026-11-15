@@ -64,6 +64,22 @@ export default function Explorer() {
   const regions = meta.data?.regions.length ? meta.data.regions : REGIONS;
   const years = meta.data?.years.length ? meta.data.years : YEARS;
   const region = regions.find((r) => r.id === regionId) ?? regions[0];
+
+  // First and last stored month, from the backend's coverage (falls back to the real archive start).
+  // Months outside this range have no satellite records at all, so they are not offered.
+  const range = useMemo(() => {
+    const cov = Object.values(meta.data?.data ?? {});
+    const firsts = cov.map((c) => c.first_day).filter((d): d is string => !!d).sort();
+    const lasts = cov.map((c) => c.last_day).filter((d): d is string => !!d).sort();
+    return {
+      firstDay: firsts[0] ?? "2000-11-01",
+      first: (firsts[0] ?? "2000-11-01").slice(0, 7), // "YYYY-MM"
+      last: (lasts[lasts.length - 1] ?? "2099-12-31").slice(0, 7),
+      viirsFirstDay: meta.data?.data?.viirs?.first_day ?? "2018-04-01",
+    };
+  }, [meta.data]);
+  const ym = (y: number, m: number) => `${y}-${String(m).padStart(2, "0")}`; // "YYYY-MM"
+  const hasData = (y: number, m: number) => ym(y, m) >= range.first && ym(y, m) <= range.last;
   const monthKey = `${regionId}-${sel.year}-${sel.month}`;
   const cal = useApi(regionId, () => api.calendar(regionId));
   const mon = useApi(monthKey, () => api.month(regionId, sel.year, sel.month));
@@ -86,7 +102,11 @@ export default function Explorer() {
   }, [hs.data, day, sensors, frp]);
 
   function pick(next: Partial<typeof sel>) {
-    setSel({ ...sel, ...next });
+    const n = { ...sel, ...next };
+    // e.g. switching to 2000 while "August" is selected → November 2000, the first month with data
+    if (ym(n.year, n.month) < range.first) n.month = Number(range.first.slice(5));
+    if (ym(n.year, n.month) > range.last) n.month = Number(range.last.slice(5));
+    setSel(n);
     setDay(null);
   }
 
@@ -132,7 +152,9 @@ export default function Explorer() {
               <ActivityChart data={yr.data} show={show} selectedMonth={sel.month} onSelectMonth={(mm) => pick({ month: mm })} />
               <p className="mt-1 text-xs text-muted">
                 Active fire cells per month, {sel.year}. VIIRS is harmonized to the MODIS scale
-                {sel.year < 2012 ? "; VIIRS data starts in 2012." : "."}
+                .
+                {sel.year < Number(range.viirsFirstDay.slice(0, 4)) && ` VIIRS (NOAA-20) data starts in ${fmtMonth(range.viirsFirstDay)}.`}
+                {sel.year === Number(range.firstDay.slice(0, 4)) && ` MODIS records start on ${fmtDay(range.firstDay)}.`}
               </p>
             </>
           ) : (
@@ -202,6 +224,10 @@ export default function Explorer() {
             <>
               <YearCalendar data={cal.data} mode={mode} selected={sel} onSelect={(year, month) => pick({ year, month })} />
               <RampLegend mode={mode} />
+              <p className="mt-2 text-xs text-muted">
+                MODIS starts on {fmtDay(range.firstDay)}, VIIRS (NOAA-20) on {fmtDay(range.viirsFirstDay)}. Striped = month
+                still downloading or incomplete, outlined = not yet happened. Hover a cell for details.
+              </p>
               <h4 className="mb-1 mt-6 text-sm">Yearly total and trend</h4>
               <BarChart
                 labels={cal.data.years.map((y) => String(y.year).slice(2))}
@@ -230,7 +256,7 @@ export default function Explorer() {
       </div>
 
       {/* ===== Filters: Region / Year / Month ===== */}
-      <div className="px-4 pt-4 lg:pointer-events-none lg:absolute lg:inset-x-0 lg:top-5 lg:z-[1100] lg:flex lg:justify-center lg:pl-[450px] lg:pr-6 min-[1800px]:px-6 lg:pt-0">
+      <div className="px-4 pt-4 lg:pointer-events-none lg:absolute lg:inset-x-0 lg:top-5 lg:z-[1100] lg:flex lg:justify-center lg:max-[1799px]:pl-[450px] lg:pr-6 min-[1800px]:pl-6 lg:pt-0">
         <Panel className="pointer-events-auto flex flex-wrap gap-3 p-2.5">
           <Field label="Region">
             <Select value={regionId} onChange={(e) => (setRegionId(e.target.value), setDay(null))}>
@@ -251,8 +277,9 @@ export default function Explorer() {
           <Field label="Month">
             <Select value={sel.month} onChange={(e) => pick({ month: +e.target.value })}>
               {MONTH_NAMES.map((mm, i) => (
-                <option key={mm} value={i + 1}>
+                <option key={mm} value={i + 1} disabled={!hasData(sel.year, i + 1)}>
                   {mm}
+                  {hasData(sel.year, i + 1) ? "" : " — no data"}
                 </option>
               ))}
             </Select>
@@ -265,61 +292,72 @@ export default function Explorer() {
         <Panel className="flex h-full flex-col overflow-y-auto px-6 py-5 lg:rounded-l-none lg:border-l-0">
           {/* Calendar */}
           <h2 className="text-center font-display text-xl 2xl:text-2xl">Burning activity</h2>
-          <p className="mb-3 mt-1 text-center text-sm text-muted">
+          <p className="mt-1 text-center text-sm text-muted">
             {MONTH_NAMES[sel.month - 1]} {sel.year} · {region.name}
           </p>
+          <div className="mb-3 mt-2 flex flex-col items-center gap-1.5">
+            {sync.data && <SyncBadge sync={sync.data} />}
+            {/* the very first month of the archive: say why nothing exists before it */}
+            {ym(sel.year, sel.month) === range.first && (
+              <p className="text-center text-xs text-accent">Records begin on {fmtDay(range.firstDay)}, no data before</p>
+            )}
+          </div>
           {mon.data ? <DayCalendar days={mon.data.days} selected={day} onSelect={setDay} /> : <Placeholder className="h-56" />}
 
-          <div className="mt-3 flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-muted">
+          <ul className="mt-2.5 grid grid-cols-3 gap-x-2 gap-y-1.5 text-[11px] leading-tight text-muted" aria-label="Calendar legend">
             {DAY_LEVELS.map((l) => (
-              <span key={l.key} className="inline-flex items-center gap-1.5">
-                <span className={`h-3.5 w-3.5 rounded-full ${l.className} ${l.key === "low" ? "border border-line" : ""}`} />
-                {l.label}
-              </span>
+              <li key={l.key} className="flex items-center gap-1.5">
+                <span className={`h-3.5 w-3.5 shrink-0 rounded ${l.className} ${l.key === "low" ? "border border-line" : ""}`} />
+                {l.label.replace(" activity", "")}
+              </li>
             ))}
-          </div>
-          <div className="mt-1.5 flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-muted">
             {DAY_STATES.map((l) => (
-              <span key={l.key} className="inline-flex items-center gap-1.5">
-                <span className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm text-[9px] ${l.className}`}>7</span>
+              <li key={l.key} className="flex items-center gap-1.5">
+                <span className={`flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded text-[8px] ${l.className}`}>7</span>
                 {l.label}
-              </span>
+              </li>
             ))}
+          </ul>
+
+          <div className="mt-2.5 rounded-xl bg-bg/60 px-3 py-1.5 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span>
+                <span className="font-semibold tabular-nums">{hs.data ? points.length.toLocaleString("en") : "…"}</span> active
+                cells · {day ? fmtShort(day) : "whole month"}
+              </span>
+              {day ? (
+                <button onClick={() => setDay(null)} className="text-xs text-accent hover:underline">
+                  Whole month
+                </button>
+              ) : (
+                <span className="text-xs text-muted">click a day</span>
+              )}
+            </div>
+            {hs.data?.truncated && (
+              <p className="mt-0.5 text-xs text-muted">
+                strongest of {hs.data.total?.toLocaleString("en")} cell-days shown
+              </p>
+            )}
           </div>
-          {sync.data && <SyncLine sync={sync.data} />}
-          <p className="mt-2 text-sm">
-            {hs.data ? `${points.length.toLocaleString("en")} active 0.1° cells on the map` : "Loading hotspots…"}
-            {hs.data?.truncated ? ` (strongest of ${hs.data.total?.toLocaleString("en")} active cell-days)` : ""}
-            {day ? ` · ${day}` : " · whole month"}
-          </p>
-          {day ? (
-            <button onClick={() => setDay(null)} className="mt-1 self-start text-sm text-accent underline">
-              Show whole month
-            </button>
-          ) : (
-            <p className="mt-1 text-sm text-muted">Click a day to show it on the map</p>
-          )}
 
           {/* Sensors + what the map colors mean */}
-          <div className="mt-3 border-y border-line py-3">
+          <div className="mt-3 border-y border-line py-2.5">
             <div className="flex justify-center gap-10">
               <Checkbox label="MODIS" color="#f39314" checked={sensors.modis} onChange={(v) => setSensors({ ...sensors, modis: v })} />
               <Checkbox label="VIIRS" color="#ffd60a" checked={sensors.viirs} onChange={(v) => setSensors({ ...sensors, viirs: v })} />
             </div>
-            {/* what the colors of the map cells mean */}
-            <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-muted">
-              {(["MODIS", "VIIRS", "BOTH"] as const).map((k) => (
-                <span key={k} className="inline-flex items-center gap-1.5">
-                  <span className="h-3 w-3 rounded-sm" style={{ background: SENSOR_COLORS[k] }} />
-                  {k === "BOTH" ? "Both" : k}
-                </span>
-              ))}
-              <span>· squares are 0.1° grid cells, not fire locations — click one for the real detections</span>
-            </div>
+            {/* what the colors of the map cells mean (MODIS and VIIRS colors are on the checkboxes) */}
+            <p className="mt-2 text-center text-xs text-muted">
+              Squares are 0.1° grid cells,{" "}
+              <span className="inline-flex items-center gap-1 align-middle">
+                <span className="h-2.5 w-2.5 rounded-sm" style={{ background: SENSOR_COLORS.BOTH }} /> both sensors
+              </span>
+              . Click one for its detections.
+            </p>
           </div>
 
           {/* FRP */}
-          <div className="border-b border-line py-3">
+          <div className="border-b border-line py-2.5">
             <RangeSlider
               label="Fire Radiative Power"
               min={0}
@@ -332,9 +370,9 @@ export default function Explorer() {
           </div>
 
           {/* Charts */}
-          <div className="border-b border-line py-3">
-            <h3 className="mb-3 text-center font-display text-lg">Charts</h3>
-            <div className="flex flex-wrap justify-center gap-3">
+          <div className="border-b border-line py-2.5">
+            <h3 className="mb-2 text-center font-display text-lg">Charts</h3>
+            <div className="flex flex-wrap justify-center gap-2">
               {CHARTS.map((c) => (
                 <button
                   key={c.id}
@@ -350,7 +388,7 @@ export default function Explorer() {
           </div>
 
           {/* the button is always visible: on short screens the panel scrolls and the CSV button sticks to the bottom */}
-          <div className="sticky -bottom-5 -mx-6 mt-auto flex justify-center bg-surface px-6 py-4">
+          <div className="sticky -bottom-5 -mx-6 mt-auto flex justify-center bg-surface px-6 py-3">
             <Button onClick={exportCsv} disabled={!hs.data || points.length === 0} className="inline-flex items-center gap-2">
               <FileIcon /> CSV File
             </Button>
@@ -388,19 +426,31 @@ export default function Explorer() {
   );
 }
 
-function SyncLine({ sync }: { sync: NonNullable<SyncResponse> }) {
+/** Small pill with the state of the NASA FIRMS synchronisation; details in the tooltip. */
+function SyncBadge({ sync }: { sync: NonNullable<SyncResponse> }) {
   const when = (t: string | null) => (t ? new Date(t).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" }) : "never");
-  const text =
-    sync.status === "never_synced"
-      ? "NASA FIRMS: not synchronised yet"
+  const look =
+    sync.status === "up_to_date"
+      ? { dot: "bg-emerald-400", text: "NASA data up to date" }
       : sync.status === "catching_up"
-        ? `NASA FIRMS: ${sync.pending_downloads.toLocaleString("en")} day downloads waiting · last sync ${when(sync.last_success_at)}`
-        : `NASA FIRMS: up to date · last sync ${when(sync.last_success_at)}`;
+        ? { dot: "bg-amber-400 animate-pulse", text: `Syncing NASA data · ${sync.pending_downloads.toLocaleString("en")} days left` }
+        : { dot: "bg-muted", text: "NASA data not synced yet" };
+  const details = [
+    `Last sync: ${when(sync.last_success_at)}`,
+    sync.last_error ? `Last error: ${sync.last_error.message}` : null,
+    sync.update?.message ?? null,
+  ]
+    .filter(Boolean)
+    .join("\n");
   return (
-    <p className="mt-2 text-xs text-muted" title={sync.update?.message}>
-      {text}
-      {sync.last_error && <span className="text-red-300"> · last error: {sync.last_error.message}</span>}
-    </p>
+    <span
+      className="inline-flex items-center gap-2 rounded-full border border-line bg-bg/60 px-3 py-1 text-xs text-muted"
+      title={details}
+    >
+      <span className={`h-2 w-2 rounded-full ${look.dot}`} aria-hidden />
+      {look.text}
+      {sync.last_error && <span className="h-2 w-2 rounded-full bg-red-400" title={sync.last_error.message} aria-label="last sync had an error" />}
+    </span>
   );
 }
 
@@ -412,4 +462,22 @@ function FileIcon() {
       <path d="M18 15v6m-3-3 3 3 3-3" />
     </svg>
   );
+}
+
+/** "2000-11-01" → "1 November 2000" */
+function fmtDay(iso: string) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return `${d} ${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+/** "2018-04-01" → "April 2018" */
+function fmtMonth(iso: string) {
+  const [y, m] = iso.split("-").map(Number);
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+}
+
+/** "2024-08-14" → "14 Aug" */
+function fmtShort(iso: string) {
+  const [, m, d] = iso.split("-").map(Number);
+  return `${d} ${MONTH_NAMES[m - 1].slice(0, 3)}`;
 }
