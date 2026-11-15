@@ -13,8 +13,8 @@ const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
  * A dot under the number: partial day (one sensor still to come, or NASA is still adding passes).
  */
 export const DAY_LEVELS = [
-  { key: "high", label: "High activity", className: "bg-accent" },
-  { key: "medium", label: "Medium activity", className: "bg-accent-2" },
+  { key: "high", label: "High activity", className: "bg-accent text-bg font-semibold" },
+  { key: "medium", label: "Medium activity", className: "bg-accent-2 text-white" },
   { key: "low", label: "Low activity", className: "bg-bg" },
 ] as const;
 

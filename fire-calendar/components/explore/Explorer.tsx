@@ -223,6 +223,7 @@ export default function Explorer() {
           body: m ? (
             <>
               <BarChart
+                label={`Area with active fire per month, ${region.name}, ${sel.year}`}
                 labels={MONTH_NUMS}
                 values={m.map((x) => x.areaKm2)}
                 color="#f39314"
@@ -244,6 +245,7 @@ export default function Explorer() {
           body: m ? (
             <>
               <BarChart
+                label={`Mean and maximum fire radiative power per month, ${region.name}, ${sel.year}`}
                 labels={MONTH_NUMS}
                 values={m.map((x) => x.frpMean)}
                 dots={m.map((x) => x.frpMax)}
@@ -328,6 +330,7 @@ export default function Explorer() {
               </p>
               <h4 className="mb-1 mt-6 text-sm">Yearly total and trend</h4>
               <BarChart
+                label={`Yearly total of active fire cells and trend, ${region.name}`}
                 labels={cal.data.years.map((y) => String(y.year).slice(2))}
                 values={totals}
                 color="#1f6fc0"
@@ -398,7 +401,7 @@ export default function Explorer() {
             aria-pressed={isOpen("report")}
             title="Own area, any date range, analytics and downloads"
             className={`inline-flex items-center gap-2 rounded-2xl border-2 border-accent px-4 text-sm font-medium transition ${
-              isOpen("report") ? "bg-accent text-white" : "text-accent hover:bg-accent/10"
+              isOpen("report") ? "bg-accent text-bg" : "text-accent hover:bg-accent/10"
             }`}
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
@@ -501,7 +504,7 @@ export default function Explorer() {
                   key={c.id}
                   onClick={() => toggleWindow(c.id)}
                   aria-pressed={isOpen(c.id)}
-                  className={`rounded-full border-2 border-accent px-4 py-1 text-sm transition 2xl:text-base ${isOpen(c.id) ? "bg-accent text-white" : "text-accent hover:bg-accent/10"
+                  className={`rounded-full border-2 border-accent px-4 py-1 text-sm transition 2xl:text-base ${isOpen(c.id) ? "bg-accent text-bg" : "text-accent hover:bg-accent/10"
                     }`}
                 >
                   {c.label}
@@ -521,7 +524,11 @@ export default function Explorer() {
 
       {/* what the map shows while an "Area & dates" result is on it */}
       {analysis && (
-        <div className="pointer-events-none px-4 pt-3 lg:absolute lg:bottom-6 lg:left-[450px] lg:right-6 lg:z-[1900] lg:flex lg:justify-start lg:p-0">
+        <div
+          className="pointer-events-none px-4 pt-3 lg:absolute lg:bottom-6 lg:left-[450px] lg:z-[1900] lg:flex lg:justify-start lg:p-0"
+          // keep clear of the "Area & dates" window on the right
+          style={{ right: isOpen("report") ? REPORT_WIDTH + 40 : 24 }}
+        >
           <div className="pointer-events-auto flex flex-wrap items-center gap-3 rounded-2xl border border-accent/50 bg-surface/95 px-4 py-2 text-sm shadow-xl">
             <span className="h-2.5 w-2.5 rounded-full bg-accent" aria-hidden />
             {!analysisFits ? (
@@ -539,7 +546,7 @@ export default function Explorer() {
                 {cellsRes.data.meta.truncated ? " (most active shown)" : ""}
               </span>
             )}
-            <button onClick={() => setAnalysis(null)} className="rounded-full border border-accent px-3 py-0.5 text-xs text-accent transition hover:bg-accent hover:text-white">
+            <button onClick={() => setAnalysis(null)} className="rounded-full border border-accent px-3 py-0.5 text-xs text-accent transition hover:bg-accent hover:text-bg">
               Back to {MONTH_NAMES[sel.month - 1]} {sel.year}
             </button>
           </div>
