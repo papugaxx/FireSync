@@ -8,7 +8,6 @@ __pycache__/
 # the database and the 50 GB archive CSV — never in git
 data/
 cache/
-*.sqlite3
 *.sqlite3-*
 *.lock
 
