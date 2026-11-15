@@ -2,9 +2,9 @@
 import { ButtonLink, Card, Placeholder, Section } from "@/components/ui";
 
 const cardsTheProblem = [
-  { title: "25 yrs", text: "of MODIS hotspots since 2000" },
-  { title: "375 m", text: "VIIRS pixel vs ~1 km for MODIS" },
-  { title: "2–3×", text: "more VIIRS detections for the same fire" },
+  { title: "25 yrs", text: "of MODIS hotspots since 2000", img: "/visual-content/1.jpg" },
+  { title: "375 m", text: "VIIRS pixel vs ~1 km for MODIS", img: "/visual-content/2.jpg" },
+  { title: "2–3×", text: "more VIIRS detections for the same fire", img: "/visual-content/3.jpg" },
 ];
 
 const cardsHowItWorks = [
@@ -49,7 +49,7 @@ export default function Home() {
         </p>
         <div className="grid gap-4 md:grid-cols-3">
           {cardsTheProblem.map((cards) =>
-            <Card key={cards.title} title={cards.title}>
+            <Card key={cards.title} title={cards.title} img={cards.img} imgAlt={cards.title}>
               {cards.text}
             </Card>
           )}
