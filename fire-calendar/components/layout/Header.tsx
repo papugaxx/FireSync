@@ -7,7 +7,6 @@ const NAV = [
   { href: "/#problem", label: "Problem" },
   { href: "/#how", label: "How it works" },
   { href: "/#features", label: "Features" },
-  { href: "/#team", label: "Team" },
 ];
 
 const outlineBtn =
