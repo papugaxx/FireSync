@@ -27,9 +27,36 @@ interface Props {
   hotspots: Hotspot[];
   /** only one sensor ticked → the card asks the backend only for that sensor */
   sensor?: "MODIS" | "VIIRS";
+  /** own rectangle of the "Area & dates" window, [west, south, east, north] */
+  customBox?: [number, number, number, number] | null;
+  /** true → the next mouse drag on the map draws a rectangle instead of moving the map */
+  drawing?: boolean;
+  onDrawn?: (box: [number, number, number, number]) => void;
+  /** false: cells only show a tooltip, no card */
+  clickable?: boolean;
+  /** cells cover a period (the "Area & dates" result): the card lists the detections of that period */
+  cardPeriod?: { from: string; to: string } | null;
+  /** own tooltip text per cell; by default date · sensor · FRP */
+  tooltip?: (h: Hotspot) => string;
+  /** zoom the map to this box once when it changes, [west, south, east, north] */
+  fitTo?: [number, number, number, number] | null;
+  /** px kept free on the right when zooming to `fitTo` (a window may cover that side) */
+  fitPaddingRight?: number;
 }
 
-export default function FireMap({ region, hotspots, sensor }: Props) {
+export default function FireMap({
+  region,
+  hotspots,
+  sensor,
+  customBox = null,
+  drawing = false,
+  onDrawn,
+  clickable = true,
+  cardPeriod = null,
+  tooltip,
+  fitTo = null,
+  fitPaddingRight = 40,
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerRef = useRef<L.LayerGroup | null>(null);
@@ -114,6 +141,12 @@ export default function FireMap({ region, hotspots, sensor }: Props) {
     };
   }, [region]);
 
+  // the tooltip function may be a new one on every render: keep the latest in a ref
+  const tooltipRef = useRef(tooltip);
+  useEffect(() => {
+    tooltipRef.current = tooltip;
+  }, [tooltip]);
+
   // 3. when the data or the zoom changes: redraw the cells
   useEffect(() => {
     const map = mapRef.current;
@@ -132,17 +165,19 @@ export default function FireMap({ region, hotspots, sensor }: Props) {
         { stroke: false, fillColor: color, fillOpacity: 0.85 },
       )
         .bindTooltip(
-          `0.1° cell · ${h.date} · ${SENSOR_LABEL[h.seenBy]} · max FRP ${h.frp === null ? "unknown" : `${h.frp} MW`}` +
-            `${h.edge ? " · border cell" : ""} · click for the real detections`,
+          tooltipRef.current?.(h) ??
+            `0.1° cell · ${h.date} · ${SENSOR_LABEL[h.seenBy]} · max FRP ${h.frp === null ? "unknown" : `${h.frp} MW`}` +
+              `${h.edge ? " · border cell" : ""} · click for the real detections`,
         )
         .on("click", (e) => {
           L.DomEvent.stopPropagation(e); // do not let the map's own click close the card again
+          if (!clickable) return;
           setSelected(h);
           setPos(screenPos(map, h));
         })
         .addTo(layer);
     }
-  }, [hotspots, zoom]);
+  }, [hotspots, zoom, clickable]);
 
   // 4. outline the selected cell and keep the card attached to it while the map moves
   useEffect(() => {
@@ -185,6 +220,92 @@ export default function FireMap({ region, hotspots, sensor }: Props) {
     };
   }, [active, detections]);
 
+  // 6. the own rectangle of the "Area & dates" window
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !customBox) return;
+    const [w, s, e, n] = customBox;
+    const rect = L.rectangle(
+      [
+        [s, w],
+        [n, e],
+      ],
+      { color: "#ffffff", weight: 2, dashArray: "8 6", fillColor: "#17b6d9", fillOpacity: 0.08, interactive: false },
+    ).addTo(map);
+    return () => {
+      rect.remove();
+    };
+  }, [customBox]);
+
+  // 6b. zoom to the analysed area
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !fitTo) return;
+    map.fitBounds(
+      [
+        [fitTo[1], fitTo[0]],
+        [fitTo[3], fitTo[2]],
+      ],
+      // on a wide screen the left panel covers ~450 px on the left and the "Area & dates" window the right side;
+      // on a phone the panels are below the map, so a small margin is enough
+      map.getSize().x >= 1200
+        ? { paddingTopLeft: [470, 120], paddingBottomRight: [fitPaddingRight, 80] }
+        : { padding: [20, 20] },
+    );
+    // fit only when the analysed box changes, not when the window moves
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitTo]);
+
+  // 7. drawing mode: press, drag and release on the map to draw the rectangle
+  const onDrawnRef = useRef(onDrawn);
+  useEffect(() => {
+    onDrawnRef.current = onDrawn;
+  }, [onDrawn]);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !drawing) return;
+    const el = map.getContainer();
+    el.style.cursor = "crosshair";
+    map.dragging.disable();
+    let start: L.LatLng | null = null;
+    let preview: L.Rectangle | null = null;
+
+    const down = (e: L.LeafletMouseEvent) => {
+      start = e.latlng;
+      preview = L.rectangle(L.latLngBounds(start, start), { color: "#17b6d9", weight: 2, fillOpacity: 0.1, interactive: false }).addTo(map);
+    };
+    const move = (e: L.LeafletMouseEvent) => {
+      if (start && preview) preview.setBounds(L.latLngBounds(start, e.latlng));
+    };
+    const up = (e: L.LeafletMouseEvent) => {
+      if (!start) return;
+      const b = L.latLngBounds(start, e.latlng);
+      preview?.remove();
+      preview = null;
+      start = null;
+      const r = (v: number) => Math.round(v * 100) / 100;
+      const clampLon = (v: number) => Math.min(180, Math.max(-180, v));
+      const box: [number, number, number, number] = [
+        r(clampLon(b.getWest())),
+        r(Math.max(-90, b.getSouth())),
+        r(clampLon(b.getEast())),
+        r(Math.min(90, b.getNorth())),
+      ];
+      if (box[0] < box[2] && box[1] < box[3]) onDrawnRef.current?.(box); // a plain click draws nothing
+    };
+    map.on("mousedown", down);
+    map.on("mousemove", move);
+    map.on("mouseup", up);
+    return () => {
+      map.off("mousedown", down);
+      map.off("mousemove", move);
+      map.off("mouseup", up);
+      preview?.remove();
+      map.dragging.enable();
+      el.style.cursor = "";
+    };
+  }, [drawing]);
+
   // the card opens above the cell, or below it when there is no room at the top;
   // horizontally it is kept inside the map, while the tail always points at the cell
   const below = pos !== null && pos.y < CARD_SPACE;
@@ -203,7 +324,8 @@ export default function FireMap({ region, hotspots, sensor }: Props) {
             style={{ left: cardX, top: pos.y, transform: `translate(-50%, ${below ? "18px" : "calc(-100% - 18px)"})` }}
           >
             <HotspotCard
-              key={`${region.id}-${active.id}-${sensor ?? "all"}`}
+              key={`${region.id}-${active.id}-${sensor ?? "all"}-${cardPeriod ? `${cardPeriod.from}_${cardPeriod.to}` : ""}`}
+              period={cardPeriod ?? undefined}
               region={region.id}
               cell={active}
               sensor={sensor}

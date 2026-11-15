@@ -14,6 +14,9 @@ import DayCalendar, { DAY_LEVELS, DAY_STATES } from "./DayCalendar";
 import ActivityChart from "./ActivityChart";
 import BarChart, { linearTrend } from "./BarChart";
 import YearCalendar from "./YearCalendar";
+import RangeReport, { type AnalysisQuery, type Box } from "./RangeReport";
+import type { Hotspot } from "@/types/api";
+import { CsvButton, PngButton } from "./DownloadButtons";
 import RampLegend from "./RampLegend";
 
 const FireMap = dynamic(() => import("./FireMap"), {
@@ -24,7 +27,10 @@ const FireMap = dynamic(() => import("./FireMap"), {
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MONTH_NUMS = Array.from({ length: 12 }, (_, i) => i + 1);
 
-const FRP_MAX = 500; // right end of the slider = "500+ MW"
+const FRP_MAX = 500;
+const MAX_MAP_DAYS = 92; // backend /cells: at most 92 days per request
+// "Area & dates" sits at the right edge, narrow enough to leave the map visible next to the left panel
+const REPORT_WIDTH = 600; // right end of the slider = "500+ MW"
 
 // Chart windows. To add a new chart: add it here and in renderWindow below.
 const CHARTS = [
@@ -33,7 +39,9 @@ const CHARTS = [
   { id: "frp", label: "FRP", title: "Fire Radiative Power", width: 760 },
   { id: "trend", label: "Trend & Anomaly", title: "Trend & Anomaly", width: 880 },
 ] as const;
-type ChartId = (typeof CHARTS)[number]["id"];
+// all windows: the charts above + "Area & dates" (own rectangle, any period, downloads), opened from the filter bar
+const WINDOWS = [...CHARTS, { id: "report", label: "Area & dates", title: "Area & dates", width: REPORT_WIDTH }] as const;
+type ChartId = (typeof WINDOWS)[number]["id"];
 
 export default function Explorer() {
   // --- filters ---
@@ -44,13 +52,24 @@ export default function Explorer() {
   // exactly one sensor ticked → the telemetry card asks the backend only for that sensor
   const onlySensor = sensors.modis !== sensors.viirs ? (sensors.modis ? "MODIS" : "VIIRS") : undefined;
   const [frp, setFrp] = useState<[number, number]>([0, FRP_MAX]);
+  // own rectangle of the "Area & dates" window, and whether it is being drawn on the map right now
+  const [customBox, setCustomBox] = useState<Box | null>(null);
+  const [drawing, setDrawing] = useState(false);
+  // the last "Analyse" of that window: while set, the map shows ITS cells (area + dates) instead of the month
+  const [analysis, setAnalysis] = useState<AnalysisQuery | null>(null);
 
   // --- windows ---
   const [windows, setWindows] = useState<{ id: ChartId; z: number }[]>([]);
   const topZ = Math.max(0, ...windows.map((w) => w.z));
   const isOpen = (id: ChartId) => windows.some((w) => w.id === id);
-  const toggleWindow = (id: ChartId) =>
+  const toggleWindow = (id: ChartId) => {
+    if (id === "report" && isOpen(id)) {
+      // closing the report stops drawing and brings the map back to the selected month
+      setDrawing(false);
+      setAnalysis(null);
+    }
     setWindows(isOpen(id) ? windows.filter((w) => w.id !== id) : [...windows, { id, z: topZ + 1 }]);
+  };
   const focusWindow = (id: ChartId) =>
     setWindows(windows.map((w) => (w.id === id && w.z !== topZ ? { ...w, z: topZ + 1 } : w)));
 
@@ -75,6 +94,7 @@ export default function Explorer() {
       firstDay: firsts[0] ?? "2000-11-01",
       first: (firsts[0] ?? "2000-11-01").slice(0, 7), // "YYYY-MM"
       last: (lasts[lasts.length - 1] ?? "2099-12-31").slice(0, 7),
+      lastDay: lasts[lasts.length - 1] ?? "2099-12-31", // the real last day comes from /api/meta/
       viirsFirstDay: meta.data?.data?.viirs?.first_day ?? "2018-04-01",
     };
   }, [meta.data]);
@@ -88,6 +108,31 @@ export default function Explorer() {
   // state of the NASA synchronisation (read once per page; the backend answers from its database)
   const sync = useApi("sync", () => api.sync());
   const error = meta.error ?? cal.error ?? mon.error ?? hs.error ?? yr.error ?? null;
+
+  // ---- the "Area & dates" result on the map: active cells of that area over that period ----
+  const analysisDays = analysis ? Math.round((Date.parse(analysis.to) - Date.parse(analysis.from)) / 86_400_000) + 1 : 0;
+  const analysisFits = analysis !== null && analysisDays <= MAX_MAP_DAYS;
+  const cellsRes = useApi(analysisFits ? `cells-${JSON.stringify(analysis)}` : "cells-none", () =>
+    analysisFits ? api.rangeCells(analysis!.area, analysis!.from, analysis!.to) : Promise.resolve(null),
+  );
+  const analysisCells = useMemo(() => {
+    const info = new Map<string, string>();
+    const list: Hotspot[] = [];
+    for (const [i, f] of (cellsRes.data?.features ?? []).entries()) {
+      const p = f.properties;
+      const seenBy = p.modis_cell_days > 0 && p.viirs_cell_days > 0 ? "BOTH" : p.modis_cell_days > 0 ? "MODIS" : "VIIRS";
+      if (seenBy === "MODIS" ? !sensors.modis : seenBy === "VIIRS" ? !sensors.viirs : !(sensors.modis || sensors.viirs)) continue;
+      const id = `a${i}`;
+      list.push({ id, lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], date: "", seenBy, frp: null });
+      info.set(
+        id,
+        `0.1° cell · active on ${p.active_days} day${p.active_days === 1 ? "" : "s"} · ` +
+          `MODIS ${p.modis_observations} / VIIRS ${p.viirs_observations} detections · click for details`,
+      );
+    }
+    return { list, info };
+  }, [cellsRes.data, sensors]);
+  const showAnalysis = analysisFits && !!cellsRes.data;
 
   // map points, filtered by day, sensors and FRP range
   const points = useMemo(() => {
@@ -145,6 +190,17 @@ export default function Explorer() {
               <Toggle active={show.viirs} color="#ffd60a" onClick={() => setShow({ ...show, viirs: !show.viirs })}>
                 VIIRS
               </Toggle>
+              <CsvButton
+                disabled={!m}
+                onClick={() =>
+                  m &&
+                  downloadCsv(
+                    `firesync_${regionId}_${sel.year}_monthly.csv`,
+                    m.map((x) => ({ year: sel.year, month: x.month, modis_active_cell_days: x.modis, viirs_active_cell_days: x.viirs, area_km2: x.areaKm2, frp_mean_mw: x.frpMean, frp_max_mw: x.frpMax })),
+                  )
+                }
+              />
+              <PngButton filename={`firesync_${regionId}_${sel.year}_monthly.png`} title="Monthly activity over the year" subtitle={`${region.name} · ${sel.year} · FireSync, NASA FIRMS`} />
             </>
           ),
           body: yr.data ? (
@@ -163,6 +219,7 @@ export default function Explorer() {
         };
       case "surface":
         return {
+          actions: <PngButton filename={`firesync_${regionId}_${sel.year}_area.png`} title="Area with active fire, km² per month" subtitle={`${region.name} · ${sel.year} · FireSync, NASA FIRMS`} />,
           body: m ? (
             <>
               <BarChart
@@ -183,6 +240,7 @@ export default function Explorer() {
         };
       case "frp":
         return {
+          actions: <PngButton filename={`firesync_${regionId}_${sel.year}_frp.png`} title="Fire Radiative Power per month, MW" subtitle={`${region.name} · ${sel.year} · FireSync, NASA FIRMS`} />,
           body: m ? (
             <>
               <BarChart
@@ -206,6 +264,27 @@ export default function Explorer() {
             <Placeholder className="h-60" />
           ),
         };
+      case "report": {
+        const monthFrom = `${ym(sel.year, sel.month)}-01`;
+        const monthTo = `${ym(sel.year, sel.month)}-${String(new Date(Date.UTC(sel.year, sel.month, 0)).getUTCDate()).padStart(2, "0")}`;
+        return {
+          body: (
+            <RangeReport
+              region={region}
+              box={customBox}
+              onBox={setCustomBox}
+              drawing={drawing}
+              onDrawing={setDrawing}
+              firstDay={range.firstDay}
+              lastDay={range.lastDay}
+              monthFrom={monthFrom < range.firstDay ? range.firstDay : monthFrom}
+              monthTo={monthTo > range.lastDay ? range.lastDay : monthTo}
+              sensor={onlySensor}
+              onAnalysed={setAnalysis}
+            />
+          ),
+        };
+      }
       case "trend": {
         // only years with all 12 months complete get a total: a partial year is not a quiet year
         const totals = cal.data?.years.map((y) => (y.months.every((v) => v !== null) ? y.months.reduce<number>((a, v) => a + (v ?? 0), 0) : null)) ?? [];
@@ -218,6 +297,25 @@ export default function Explorer() {
               <Toggle active={mode === "anomaly"} color="#17b6d9" onClick={() => setMode("anomaly")}>
                 Anomaly
               </Toggle>
+              <CsvButton
+                label="Calendar CSV"
+                disabled={!cal.data}
+                title="The year × month calendar as numbers (active cell-days per month), plus the median"
+                onClick={() => {
+                  if (!cal.data) return;
+                  const row = (label: string | number, vals: (number | null)[]) =>
+                    Object.fromEntries([["year", label], ...MONTH_NAMES.map((mm, i) => [mm.slice(0, 3).toLowerCase(), vals[i]])]);
+                  downloadCsv(`firesync_${regionId}_calendar.csv`, [
+                    ...cal.data.years.map((y) => row(y.year, y.months)),
+                    row("median", cal.data.median),
+                  ]);
+                }}
+              />
+              <PngButton
+                filename={`firesync_${regionId}_yearly_trend.png`}
+                title="Yearly total and trend"
+                subtitle={`${region.name} · FireSync, NASA FIRMS`}
+              />
             </>
           ),
           body: cal.data ? (
@@ -252,7 +350,18 @@ export default function Explorer() {
     <section className="relative lg:h-[calc(100dvh-8.5rem)] lg:min-h-[640px] lg:overflow-hidden">
       {/* ===== Map ===== */}
       <div className="h-[55vh] lg:absolute lg:inset-0 lg:h-auto">
-        <FireMap region={region} hotspots={points} sensor={onlySensor} />
+        <FireMap
+          region={region}
+          hotspots={showAnalysis ? analysisCells.list : points}
+          cardPeriod={showAnalysis && analysis ? { from: analysis.from, to: analysis.to } : null}
+          tooltip={showAnalysis ? (h) => analysisCells.info.get(h.id) ?? "" : undefined}
+          fitTo={analysis?.box ?? null}
+          fitPaddingRight={isOpen("report") ? REPORT_WIDTH + 40 : 40}
+          sensor={onlySensor}
+          customBox={isOpen("report") ? customBox : null}
+          drawing={drawing}
+          onDrawn={(b) => (setCustomBox(b), setDrawing(false))}
+        />
       </div>
 
       {/* ===== Filters: Region / Year / Month ===== */}
@@ -284,6 +393,20 @@ export default function Explorer() {
               ))}
             </Select>
           </Field>
+          <button
+            onClick={() => toggleWindow("report")}
+            aria-pressed={isOpen("report")}
+            title="Own area, any date range, analytics and downloads"
+            className={`inline-flex items-center gap-2 rounded-2xl border-2 border-accent px-4 text-sm font-medium transition ${
+              isOpen("report") ? "bg-accent text-white" : "text-accent hover:bg-accent/10"
+            }`}
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+              <rect x="4" y="5" width="16" height="15" rx="2" />
+              <path d="M4 10h16M9 3v4M15 3v4" />
+            </svg>
+            Area &amp; dates
+          </button>
         </Panel>
       </div>
 
@@ -396,6 +519,33 @@ export default function Explorer() {
         </Panel>
       </div>
 
+      {/* what the map shows while an "Area & dates" result is on it */}
+      {analysis && (
+        <div className="pointer-events-none px-4 pt-3 lg:absolute lg:bottom-6 lg:left-[450px] lg:right-6 lg:z-[1900] lg:flex lg:justify-start lg:p-0">
+          <div className="pointer-events-auto flex flex-wrap items-center gap-3 rounded-2xl border border-accent/50 bg-surface/95 px-4 py-2 text-sm shadow-xl">
+            <span className="h-2.5 w-2.5 rounded-full bg-accent" aria-hidden />
+            {!analysisFits ? (
+              <span>
+                The map shows up to {MAX_MAP_DAYS} days at once; your period has {analysisDays}. Showing the selected month instead.
+              </span>
+            ) : cellsRes.error ? (
+              <span className="text-red-300">Could not load the map cells: {cellsRes.error}</span>
+            ) : !cellsRes.data ? (
+              <span className="text-muted">Loading the cells of {analysis.label}…</span>
+            ) : (
+              <span>
+                Map: <b className="font-semibold">{analysis.label}</b> · {analysis.from} – {analysis.to} ·{" "}
+                {analysisCells.list.length.toLocaleString("en")} active cells
+                {cellsRes.data.meta.truncated ? " (most active shown)" : ""}
+              </span>
+            )}
+            <button onClick={() => setAnalysis(null)} className="rounded-full border border-accent px-3 py-0.5 text-xs text-accent transition hover:bg-accent hover:text-white">
+              Back to {MONTH_NAMES[sel.month - 1]} {sel.year}
+            </button>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div role="alert" className="absolute bottom-5 right-5 z-[1100] rounded-2xl border border-red-500/40 bg-red-950/90 p-4 text-sm text-red-200">
           Could not load data: {error}
@@ -404,15 +554,17 @@ export default function Explorer() {
 
       {/* ===== Chart windows ===== */}
       {windows.map((w) => {
-        const cfg = CHARTS.find((c) => c.id === w.id)!;
-        const idx = CHARTS.findIndex((c) => c.id === w.id);
+        const cfg = WINDOWS.find((c) => c.id === w.id)!;
+        const idx = WINDOWS.findIndex((c) => c.id === w.id);
         const content = renderWindow(w.id);
         return (
           <FloatingWindow
             key={w.id}
             title={cfg.title}
             actions={content.actions}
-            initial={{ x: 470 + idx * 40, y: 100 + idx * 30 }}
+            // "Area & dates" is tall: it opens at the top, next to the left panel
+            // (a huge x is pulled back to the right edge by the window itself)
+            initial={w.id === "report" ? { x: 100_000, y: 100 } : { x: 470 + idx * 40, y: 100 + idx * 30 }}
             width={cfg.width}
             z={1200 + w.z}
             onFocus={() => focusWindow(w.id)}

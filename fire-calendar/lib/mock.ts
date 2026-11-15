@@ -1,6 +1,9 @@
 // Test data until a real API exists.
 // Generated deterministically (identical on every reload).
 import type {
+  AreaQuery,
+  RangeCellsResponse,
+  RangeReport,
   Detection,
   PointsResponse,
   CalendarResponse,
@@ -200,4 +203,71 @@ export function mockPoints(lat: number, lon: number, date: string, sensor?: "MOD
     };
   }).sort((a, b) => a.acq_time.localeCompare(b.acq_time));
   return { count: points.length, has_more: false, points };
+}
+
+/** Fake daily report for an area and period (the backend answers this from NASA data). */
+export function mockRangeReport(area: AreaQuery, from: string, to: string): RangeReport {
+  const key = "region" in area ? area.region : area.bbox.join(",");
+  const daily: RangeReport["daily"] = [];
+  for (let t = Date.parse(from); t <= Date.parse(to); t += 86_400_000) {
+    const date = new Date(t).toISOString().slice(0, 10);
+    const r = rng(hash(`range-${key}-${date}`));
+    const month = Number(date.slice(5, 7)) - 1;
+    const base = monthWeight("region" in area ? area.region : "ukraine", month) / 30 / ("region" in area ? 1 : 8);
+    const modisOk = date >= MOCK_COVERAGE.modis.first_day;
+    const viirsOk = date >= MOCK_COVERAGE.viirs.first_day;
+    const m = Math.round(base * r() * 2);
+    const v = Math.round(m * (2 + r()));
+    daily.push({
+      date,
+      modis: { status: modisOk ? "loaded" : "missing", active_cells: modisOk ? m : null, observations: modisOk ? Math.round(m * 1.6) : null },
+      viirs: { status: viirsOk ? "loaded" : "missing", active_cells: viirsOk ? v : null, observations: viirsOk ? Math.round(v * 2.4) : null },
+      shared_active_cells: modisOk && viirsOk ? Math.round(m * 0.7) : null,
+    });
+  }
+  const sum = (ch: "modis" | "viirs", f: "observations" | "active_cells") =>
+    daily.every((d) => d[ch].status === "loaded") ? daily.reduce((a, d) => a + (d[ch][f] ?? 0), 0) : null;
+  const loaded = (ch: "modis" | "viirs") => daily.filter((d) => d[ch].status === "loaded").length;
+  return {
+    date_from: from,
+    date_to: to,
+    daily,
+    coverage: {
+      modis: { loaded_days: loaded("modis"), requested_days: daily.length },
+      viirs: { loaded_days: loaded("viirs"), requested_days: daily.length },
+    },
+    totals: {
+      modis: { observations: sum("modis", "observations"), active_cell_days: sum("modis", "active_cells") },
+      viirs: { observations: sum("viirs", "observations"), active_cell_days: sum("viirs", "active_cells") },
+    },
+  };
+}
+
+/** Fake active cells of an area over a period (the backend answers this from NASA data). */
+export function mockRangeCells(area: AreaQuery, from: string, to: string): RangeCellsResponse {
+  const region = "region" in area ? REGIONS.find((x) => x.id === area.region) ?? REGIONS[0] : null;
+  const [w, s, e, n] = region ? [region.bbox[1], region.bbox[0], region.bbox[3], region.bbox[2]] : (area as { bbox: number[] }).bbox;
+  const r = rng(hash(`cells-${w}-${s}-${e}-${n}-${from}-${to}`));
+  const count = Math.min(1500, Math.round((e - w) * (n - s) * 3) + 30);
+  const features: RangeCellsResponse["features"] = [];
+  const centres = Array.from({ length: 5 }, () => [s + r() * (n - s), w + r() * (e - w)]);
+  for (let i = 0; i < count; i++) {
+    const [clat, clon] = centres[Math.floor(r() * centres.length)];
+    const lat = Math.min(n - 0.05, Math.max(s + 0.05, clat + (r() - 0.5) * (n - s) * 0.3));
+    const lon = Math.min(e - 0.05, Math.max(w + 0.05, clon + (r() - 0.5) * (e - w) * 0.3));
+    const m = r() < 0.6 ? Math.ceil(r() * 3) : 0;
+    const v = r() < 0.8 ? Math.ceil(r() * 4) : 0;
+    features.push({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [cellCentre(lon), cellCentre(lat)] },
+      properties: {
+        active_days: Math.max(m, v) || 1,
+        modis_cell_days: m,
+        viirs_cell_days: v || (m ? 0 : 1),
+        modis_observations: m * 2,
+        viirs_observations: (v || (m ? 0 : 1)) * 3,
+      },
+    });
+  }
+  return { type: "FeatureCollection", features, meta: { cells: features.length, truncated: false, resolution_degrees: 0.1 } };
 }

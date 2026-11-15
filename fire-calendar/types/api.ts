@@ -161,3 +161,52 @@ export interface SyncResponse {
   last_error: { at: string; message: string } | null;
   update?: { state: string; message: string; enabled: boolean };
 }
+
+// ---------- Own area + date range (backend root endpoints /calendar and /export.csv) ----------
+
+/** What to analyse: a ready-made region, or an own rectangle [west, south, east, north] in degrees. */
+export type AreaQuery = { region: string } | { bbox: [number, number, number, number] };
+
+/** One sensor on one day: `null` values = the day is not stored for this sensor. */
+export interface RangeSensorDay {
+  status: "loaded" | "missing";
+  /** individual NASA detections that day */
+  observations: number | null;
+  /** distinct active 0.1° cells that day */
+  active_cells: number | null;
+}
+
+export interface RangeDay {
+  date: string; // YYYY-MM-DD, UTC
+  modis: RangeSensorDay;
+  viirs: RangeSensorDay;
+  /** cells both sensors saw (only when both are stored) */
+  shared_active_cells: number | null;
+}
+
+/** Backend `GET /calendar?date_from&date_to&(region | west,south,east,north)`. */
+export interface RangeReport {
+  date_from: string;
+  date_to: string;
+  daily: RangeDay[];
+  coverage: Record<"modis" | "viirs", { loaded_days: number; requested_days: number }>;
+  /** null when not every day of the period is stored */
+  totals: Record<"modis" | "viirs", { observations: number | null; active_cell_days: number | null }>;
+}
+
+/** Backend `GET /cells?date_from&date_to&(region | west,south,east,north)&resolution=0.1`: active cells of a period. */
+export interface RangeCellsResponse {
+  type: "FeatureCollection";
+  features: {
+    type: "Feature";
+    geometry: { type: "Point"; coordinates: [number, number] }; // [lon, lat] of the cell centre
+    properties: {
+      active_days: number;
+      modis_cell_days: number;
+      viirs_cell_days: number;
+      modis_observations: number;
+      viirs_observations: number;
+    };
+  }[];
+  meta: { cells: number; truncated: boolean; resolution_degrees: number };
+}

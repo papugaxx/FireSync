@@ -3,6 +3,7 @@
 // `python run.py` in the repository root sets it automatically; for `npm run dev` alone copy
 // .env.example to .env.local. While it is empty, the site shows the demo data from lib/mock.ts.
 import type {
+  AreaQuery,
   BoundaryResponse,
   CalendarResponse,
   HotspotsResponse,
@@ -10,10 +11,12 @@ import type {
   MonthlyResponse,
   MonthResponse,
   PointsResponse,
+  RangeCellsResponse,
+  RangeReport,
   SyncResponse,
 } from "@/types/api";
 import type { Hotspot } from "@/types/api";
-import { mockCalendar, mockHotspots, mockMeta, mockMonth, mockMonthly, mockPoints } from "./mock";
+import { mockCalendar, mockHotspots, mockMeta, mockMonth, mockMonthly, mockPoints, mockRangeCells, mockRangeReport } from "./mock";
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, "");
 export const USING_DEMO_DATA = !API_URL;
@@ -66,6 +69,32 @@ export const api = {
     return get<PointsResponse>(`/api/detections/?${q}`, () => mockPoints(cell.lat, cell.lon, cell.date, sensor));
   },
 
+  /**
+   * Individual detections inside one 0.1° cell over a PERIOD (the "Area & dates" map). The backend's
+   * root `/points` gives at most 7 days per request, so the period is asked for in 7-day pieces
+   * (in parallel; a 0.1° cell is small, so each piece is quick) and joined, oldest first.
+   */
+  cellRangePoints: async (lat: number, lon: number, from: string, to: string, sensor?: "MODIS" | "VIIRS"): Promise<PointsResponse> => {
+    const pieces: [string, string][] = [];
+    for (let t = Date.parse(from); t <= Date.parse(to); t += 7 * 86_400_000) {
+      const end = Math.min(t + 6 * 86_400_000, Date.parse(to));
+      pieces.push([new Date(t).toISOString().slice(0, 10), new Date(end).toISOString().slice(0, 10)]);
+    }
+    const h = 0.0499; // just inside the cell, so the neighbours sharing its edges are not included
+    const box = `west=${(lon - h).toFixed(4)}&south=${(lat - h).toFixed(4)}&east=${(lon + h).toFixed(4)}&north=${(lat + h).toFixed(4)}`;
+    const parts = await Promise.all(
+      pieces.map(([a, b]) =>
+        get<PointsResponse>(`/points?${box}&date_from=${a}&date_to=${b}&limit=500${sensor ? `&sensor=${sensor}` : ""}`, () =>
+          mockPoints(lat, lon, a, sensor),
+        ),
+      ),
+    );
+    const points = parts
+      .flatMap((p) => p.points)
+      .sort((x, y) => (x.acq_date + x.acq_time).localeCompare(y.acq_date + y.acq_time));
+    return { count: points.length, has_more: parts.some((p) => p.has_more), points };
+  },
+
   /** The border the region is counted by (null without a backend: the map draws the rectangle). */
   boundary: (region: string) => get<BoundaryResponse | null>(`/api/boundary/?region=${region}`, () => null),
 
@@ -77,7 +106,33 @@ export const api = {
     API_URL
       ? `${API_URL}/api/export/?region=${region}&year=${year}&month=${month}${day ? `&day=${day}` : ""}${sensor ? `&sensor=${sensor}` : ""}`
       : null,
+
+  /**
+   * Daily MODIS / VIIRS activity of a region or an own rectangle over any period (backend root `/calendar`).
+   * Limits set by the backend: a region up to 3660 days, an own rectangle up to 366 days.
+   */
+  rangeReport: (area: AreaQuery, from: string, to: string) =>
+    get<RangeReport>(`/calendar?${areaParams(area)}&date_from=${from}&date_to=${to}`, () => mockRangeReport(area, from, to)),
+
+  /** Active 0.1° cells of an area over a period, for the map (backend root `/cells`, up to 92 days). */
+  rangeCells: (area: AreaQuery, from: string, to: string) =>
+    get<RangeCellsResponse>(`/cells?${areaParams(area)}&date_from=${from}&date_to=${to}&resolution=0.1`, () =>
+      mockRangeCells(area, from, to),
+    ),
+
+  /** Link to the CSV of every detection of an area and period (backend `/export.csv`, up to 31 days). */
+  exportRangeUrl: (area: AreaQuery, from: string, to: string, sensor?: "MODIS" | "VIIRS") =>
+    API_URL
+      ? `${API_URL}/export.csv?${areaParams(area)}&date_from=${from}&date_to=${to}${sensor ? `&sensor=${sensor}` : ""}`
+      : null,
 };
+
+/** Area as query parameters: `region=…` or `west=…&south=…&east=…&north=…`. */
+function areaParams(area: AreaQuery) {
+  if ("region" in area) return `region=${encodeURIComponent(area.region)}`;
+  const [w, s, e, n] = area.bbox;
+  return `west=${w}&south=${s}&east=${e}&north=${n}`;
+}
 
 export function downloadCsv(filename: string, rows: Record<string, unknown>[]) {
   if (!rows.length) return;

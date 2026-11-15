@@ -12,6 +12,8 @@ import type { Detection, Hotspot } from "@/types/api";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 interface Props {
+  /** a period instead of the cell's own day (the "Area & dates" map): detections of every day in it */
+  period?: { from: string; to: string };
   /** region id: in a region with a real border only the detections inside it are listed */
   region: string;
   cell: Hotspot;
@@ -22,8 +24,10 @@ interface Props {
   onPoints?: (points: Detection[], current: number) => void;
 }
 
-export default function HotspotCard({ region, cell, sensor, onClose, onPoints }: Props) {
-  const res = useApi(`${region}-${cell.id}-${sensor ?? "all"}`, () => api.cellPoints(region, cell, sensor));
+export default function HotspotCard({ region, cell, sensor, onClose, onPoints, period }: Props) {
+  const res = useApi(`${region}-${cell.id}-${sensor ?? "all"}-${period ? `${period.from}_${period.to}` : ""}`, () =>
+    period ? api.cellRangePoints(cell.lat, cell.lon, period.from, period.to, sensor) : api.cellPoints(region, cell, sensor),
+  );
   const [i, setI] = useState(0);
   const list = res.data?.points ?? [];
   const current = Math.min(i, list.length - 1);
@@ -110,7 +114,7 @@ export default function HotspotCard({ region, cell, sensor, onClose, onPoints }:
             )}
           </div>
           <p className="mt-2 text-xs text-muted">
-            {list.length} detection{list.length === 1 ? "" : "s"} in this 0.1° grid cell on this day
+            {list.length} detection{list.length === 1 ? "" : "s"} in this 0.1° grid cell {period ? "in the analysed period" : "on this day"}
             {d.product === "NRT" ? " · preliminary (NRT) data" : ""}
             {cell.edge ? " · the border crosses this cell: only detections inside the region are counted" : ""}
           </p>
