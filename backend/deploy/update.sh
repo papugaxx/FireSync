@@ -13,5 +13,5 @@ BACKEND="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON="${PYTHON:-$BACKEND/venv/bin/python}"
 
 echo "$(date -u +%FT%TZ) NASA FIRMS update"
-cd "$BACKEND"
+cd "$BACKEND" || exit 1
 exec "$PYTHON" updater.py

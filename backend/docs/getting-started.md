@@ -41,6 +41,21 @@ API still starts if you skip this step, but the editable install is the supporte
     Start tools as `python -m uvicorn ...` and `python -m pytest`. This guarantees that the interpreter
     from the active virtual environment is used rather than a globally installed `uvicorn`.
 
+## Everything at once
+
+From the repository root (one level above `backend/`):
+
+```bash
+python3 run.py            # Windows: py run.py
+```
+
+It creates `backend/venv` and installs the packages if needed, runs `npm ci` for the website if needed, checks that
+ports 8000 and 3000 are free, starts the API and the website together and stops both with Ctrl+C. Open
+<http://127.0.0.1:3000/explore>. `python3 run.py --prod` runs the production build; `--no-update` turns the
+background NASA downloads off; `--api-port` / `--web-port` choose other ports.
+
+The sections below do the same by hand.
+
 ## Import the archive (once)
 
 Put the archive export at `data/raw/NASA_FIRMS_2000_2025.csv` and run:

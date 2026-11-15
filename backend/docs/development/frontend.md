@@ -84,12 +84,15 @@ Next.js 16. The CSV button builds a file **in the browser** from the hotspots cu
 `lib/api.ts` reads `NEXT_PUBLIC_API_URL`. While it is empty, every call returns data from `lib/mock.ts` after a
 short simulated delay. Once it is set, requests go to that address and the components do not change.
 
-```text
-# fire-calendar/.env.local
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
-```
+- **Everything at once:** `python3 run.py` in the repository root starts the API and the website and sets the
+  variable itself.
+- **Only the website:** `cp .env.example .env.local` (it contains `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`),
+  then `npm run dev`. Restart it after changing the file.
+- **Server:** the address is built into the site at build time:
+  `NEXT_PUBLIC_API_URL=https://YOUR-DOMAIN npm run build` (done by `backend/deploy/setup_server.sh`).
 
-Restart `npm run dev` after changing it. Remember to add the frontend's address to the backend's `FRONTEND_URLS`
+The Explorer takes its regions and years from `/api/meta/` (the demo lists in `mock.ts` are used only without a
+backend), so newly downloaded years appear by themselves. Remember to add the frontend's address to the backend's `FRONTEND_URLS`
 (default `http://localhost:3000`), otherwise the browser blocks the requests with a CORS error.
 
 ### What the backend answers
@@ -119,9 +122,7 @@ There are no finished styles yet, only layout and placeholder frames. Where to c
 
 - The repository root has its own `package.json` listing `react-leaflet` and `geist`, which `fire-calendar` does
   not use (the map uses plain Leaflet). It looks like a stray install and can probably be removed.
-- `fire-calendar/README.md` mentions copying `.env.example`, but no such file is in the tree. Create `.env.local`
-  by hand as shown above.
-- The Explorer's yearly total sums the months it receives; incomplete months come as `null` and count as 0 there,
-  so the current year's total looks low until the year is complete.
+- The yearly total in the trend chart counts only years whose 12 months are all complete, so a partial year is not
+  shown as a quiet year.
 - The base map tiles come from Esri's ArcGIS tile service (`server.arcgisonline.com`); check its terms of use before
   a public launch.

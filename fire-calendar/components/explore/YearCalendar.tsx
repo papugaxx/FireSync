@@ -1,6 +1,6 @@
 "use client";
 import type { CalendarResponse } from "@/types/api";
-import { anomalyColor, fireColor, MONTHS } from "@/lib/colors";
+import { anomalyColor, fireColor, MONTHS, NO_DATA } from "@/lib/colors";
 
 interface Props {
   data: CalendarResponse;
@@ -21,7 +21,7 @@ export default function YearCalendar({ data, mode, selected, onSelect }: Props) 
             <th />
             {MONTHS.map((m) => (
               <th key={m} className="font-normal">
-                {m}
+                {m ?? "—"}
               </th>
             ))}
           </tr>
@@ -32,8 +32,9 @@ export default function YearCalendar({ data, mode, selected, onSelect }: Props) 
               <td className="pr-2 text-right font-mono">{y.year}</td>
               {y.months.map((v, i) => {
                 const isSel = selected.year === y.year && selected.month === i + 1;
-                const bg = mode === "count" ? fireColor(v, max) : anomalyColor(v, data.median[i]);
-                const pct = v !== null && data.median[i] ? Math.round((v / data.median[i] - 1) * 100) : null;
+                const med = data.median[i]; // null: fewer than 3 complete years, no norm to compare with
+                const bg = mode === "count" ? fireColor(v, max) : med === null ? NO_DATA : anomalyColor(v, med);
+                const pct = v !== null && med ? Math.round((v / med - 1) * 100) : null;
                 return (
                   <td key={i} className="p-0">
                     <button
@@ -46,7 +47,7 @@ export default function YearCalendar({ data, mode, selected, onSelect }: Props) 
                       title={
                         v === null
                           ? `${MONTHS[i]} ${y.year}: no data`
-                          : `${MONTHS[i]} ${y.year}: ${v} active cells (${pct !== null && pct >= 0 ? "+" : ""}${pct}% vs median)`
+                          : `${MONTHS[i]} ${y.year}: ${v} active cells${pct === null ? "" : ` (${pct >= 0 ? "+" : ""}${pct}% vs median)`}`
                       }
                       aria-label={`${MONTHS[i]} ${y.year}`}
                     />
@@ -59,7 +60,7 @@ export default function YearCalendar({ data, mode, selected, onSelect }: Props) 
             <td className="pr-2 pt-2 text-right">median</td>
             {data.median.map((m, i) => (
               <td key={i} className="pt-2 text-center font-mono">
-                {m}
+                {m ?? "—"}
               </td>
             ))}
           </tr>

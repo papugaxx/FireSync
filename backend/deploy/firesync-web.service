@@ -1,0 +1,21 @@
+# systemd: the website (Next.js production server).
+# Installed by deploy/setup_server.sh. The API address is built into the site by
+# `NEXT_PUBLIC_API_URL=https://YOUR-DOMAIN npm run build` — rebuild after changing the domain.
+# Logs:  journalctl -u firesync-web -f
+
+[Unit]
+Description=FireSync website (Next.js)
+After=network-online.target firesync-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=firesync
+WorkingDirectory=/srv/FireSync/fire-calendar
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run start -- --port 3000 --hostname 127.0.0.1
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

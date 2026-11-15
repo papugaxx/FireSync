@@ -28,7 +28,7 @@ export default function DayCalendar({
   const active = days.map((d) => d.harmonized ?? 0).filter((v) => v > 0).sort((a, b) => a - b);
   const t1 = active[Math.floor(active.length / 3)] ?? 0; // low / medium boundary
   const t2 = active[Math.floor((active.length * 2) / 3)] ?? 0; // medium / high boundary
-  const offset = (new Date(days[0].date).getDay() + 6) % 7; // Monday = 0
+  const offset = (new Date(days[0].date).getUTCDay() + 6) % 7; // Monday = 0 (dates are UTC days)
 
   function levelClass(v: number | null) {
     if (!v) return "";

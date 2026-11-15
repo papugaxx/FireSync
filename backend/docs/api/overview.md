@@ -9,7 +9,7 @@ This page describes the conventions shared by all endpoints. Each endpoint is do
 | Environment | Base URL |
 |---|---|
 | Local development | `http://localhost:8000` |
-| Production | `https://api.YOUR-DOMAIN` (see [Deployment](../operations/deployment.md)) |
+| Production | `https://YOUR-DOMAIN` — the API is under `/api/`, `/docs` and the general paths (see [Deployment](../operations/deployment.md)) |
 
 All endpoints are `GET`. The API is read-only.
 

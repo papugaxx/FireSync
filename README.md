@@ -106,7 +106,8 @@ FireSync/
 │   ├── deploy/              systemd unit, nginx config, cron, update script
 │   ├── docs/ + mkdocs.yml   full documentation site
 │   └── data_pipeline/       NASA FIRMS loader + SQLite storage (package `fires_data`)
-└── fire-calendar/           Next.js website (landing page + /explore calendar)
+├── fire-calendar/           Next.js website (landing page + /explore calendar)
+└── run.py                   starts the backend and the website together
 ```
 
 `backend/_old/` holds earlier versions of some files and is local only.
@@ -139,6 +140,18 @@ Key rules:
 A monthly sum uses *cell-days*. A degree grid changes cell area with latitude, so it is not equal-area.
 
 ## Getting started
+
+Everything at once (backend + website), from the repository root:
+
+```bash
+python3 run.py            # Windows: py run.py
+```
+
+`run.py` creates `backend/venv` and installs the packages if needed, runs `npm ci` for the website if needed,
+checks that ports 8000 and 3000 are free, starts the API and the website together and stops both with Ctrl+C.
+Open <http://127.0.0.1:3000/explore> (API docs: <http://127.0.0.1:8000/docs>).
+`--prod` runs the production build, `--no-update` turns the background NASA downloads off,
+`--api-port` / `--web-port` choose other ports.
 
 ### Requirements
 
@@ -177,16 +190,19 @@ Open <http://localhost:8000/docs> for interactive Swagger. About a minute after 
 
 ### Frontend
 
+`python3 run.py` starts it together with the API. To run only the website:
+
 ```bash
 cd fire-calendar
-npm install
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
+npm ci
 npm run dev
 ```
 
 - <http://localhost:3000>: landing page
-- <http://localhost:3000/explore>: calendar prototype
+- <http://localhost:3000/explore>: the fire calendar (real data from the API)
 
-Set `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` in `fire-calendar/.env.local` to show the real data. While it is empty, the site serves mock data from `lib/mock.ts`.
+Without `NEXT_PUBLIC_API_URL` the site serves the demo data from `lib/mock.ts`.
 
 ### NASA data
 
@@ -269,7 +285,15 @@ Method write-ups live next to the pipeline: `GRID_METHOD.md`, `CALIBRATION_METHO
 
 ## Deployment
 
-Target: Ubuntu 24.04, 2 GB RAM, 20+ GB disk. `backend/deploy/` has a systemd unit (one uvicorn worker behind nginx; it also runs the NASA updates), an nginx config, and an optional cron job for updates. Copy `data/firesync.sqlite3` to the server instead of importing the 50 GB CSV there. Step-by-step instructions: `backend/docs/operations/deployment.md`.
+Target: Ubuntu 24.04, 2 GB RAM, 20+ GB disk, one domain: `/` is the website, `/api/...` the API, `/docs` the API documentation.
+
+```bash
+sudo git clone <repository> /srv/FireSync
+# copy backend/data/firesync.sqlite3 to the server and put FIRMS_MAP_KEY into backend/data_pipeline/.env, then:
+cd /srv/FireSync && sudo bash backend/deploy/setup_server.sh YOUR-DOMAIN --https you@example.com
+```
+
+`setup_server.sh` installs Node.js 22 and the Python packages, builds the website for the domain, installs two systemd services (`firesync-api`, `firesync-web`) and the nginx site, and gets an HTTPS certificate. Run it again after `git pull` to update. Details: `backend/docs/operations/deployment.md`.
 
 ## Limitations
 

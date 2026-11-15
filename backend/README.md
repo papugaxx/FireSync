@@ -17,7 +17,28 @@ API календаря пожарной активности по спутник
 
 ---
 
-## Быстрый старт (на своём компьютере)
+## Быстрый старт — всё одной командой
+
+Из корня репозитория (папка `FireSync`):
+
+```bash
+cd ~/Desktop/FireSync
+python3 run.py            # Windows: py run.py
+```
+
+`run.py` сам создаст `backend/venv` и поставит пакеты, если их нет, поставит пакеты сайта (`npm ci`),
+проверит, что порты 8000 и 3000 свободны, запустит бэкенд и сайт вместе и остановит оба по Ctrl+C.
+Сайт: **http://127.0.0.1:3000/explore**, API: **http://127.0.0.1:8000/docs**.
+
+| Команда | Что делает |
+|---|---|
+| `python3 run.py` | режим разработки (изменения в коде подхватываются сразу) |
+| `python3 run.py --prod` | собранная (production) версия сайта, как на сервере |
+| `python3 run.py --no-update` | без фонового скачивания новых данных NASA |
+| `python3 run.py --setup` | только поставить всё нужное и выйти |
+| `python3 run.py --api-port 8001 --web-port 3001` | другие порты, если эти заняты |
+
+## Вручную (по шагам)
 
 ```bash
 cd ~/Desktop/FireSync/backend
@@ -35,14 +56,9 @@ python -m uvicorn main:app --reload
 
 Открыть **http://localhost:8000/docs** — все запросы с описаниями и кнопками «Try it out».
 
-Чтобы сайт показывал настоящие данные, во фронтенде нужен файл `fire-calendar/.env.local`:
-
-```text
-NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
-```
-
-Потом `npm run dev` в папке `fire-calendar` и **http://localhost:3000/explore**.
-Без этого файла сайт работает на своих демо-данных.
+Сайт отдельно: в `fire-calendar` выполнить `cp .env.example .env.local` (там адрес бэкенда
+`NEXT_PUBLIC_API_URL=http://127.0.0.1:8000`), потом `npm install` и `npm run dev`.
+Без этого адреса сайт показывает демо-данные.
 
 > База (`data/firesync.sqlite3`, ~3 ГБ) и CSV (`data/raw/`, 50 ГБ) в git не попадают.
 > Коллегам быстрее скопировать готовую базу, чем заново импортировать CSV.
@@ -166,7 +182,7 @@ python updater.py --status    # что лежит в базе и как прош
 | `config.py` | настройки: пути, регионы, лимиты обновления |
 | `data/` | `firesync.sqlite3` и `raw/NASA_FIRMS_2000_2025.csv` (не в git) |
 | `tests/` | 44 теста на сгенерированном архиве в настоящем формате |
-| `deploy/` | systemd, nginx, необязательный cron |
+| `deploy/` | сервер: `setup_server.sh`, службы systemd для API и сайта, nginx, необязательный cron |
 | `docs/` | документация MkDocs (`mkdocs serve -a 127.0.0.1:8001`) |
 
 Старые `grid_index.py` и `db.py` больше не нужны (они читали базу напарника) и лежат в `_old/`.
@@ -177,39 +193,25 @@ python updater.py --status    # что лежит в базе и как прош
 
 ## Сервер (Ubuntu 24.04)
 
-Нужно: 2 ГБ памяти, от 20 ГБ диска (база 3 ГБ + рост около 0,1 ГБ в месяц).
+Сайт и API на одном домене: `https://домен/` — сайт, `https://домен/api/...` — API, `https://домен/docs` — документация API.
+Нужно: 2 ГБ памяти, от 20 ГБ диска, домен, который указывает на сервер.
 
 ```bash
-# 1. Пакеты, пользователь, код
-sudo apt update && sudo apt install -y python3-venv nginx certbot python3-certbot-nginx git
-sudo adduser --disabled-password --gecos "" firesync
-sudo mkdir -p /srv/FireSync && sudo chown firesync /srv/FireSync
-sudo -iu firesync
-git clone <адрес репозитория> /srv/FireSync
-cd /srv/FireSync/backend
-python3 -m venv venv && source venv/bin/activate
-pip install -r requirements.txt && pip install -e ./data_pipeline
-mkdir -p data
-echo "FIRMS_MAP_KEY=ваш_ключ" > data_pipeline/.env
-exit
-```
+# 1. Код и ключ NASA (на сервере)
+sudo git clone <адрес репозитория> /srv/FireSync
+sudo mkdir -p /srv/FireSync/backend/data
+echo "FIRMS_MAP_KEY=ваш_ключ" | sudo tee /srv/FireSync/backend/data_pipeline/.env
 
-```bash
-# 2. База (3 ГБ) — копируем с Mac, а не импортируем 50 ГБ заново. НА MAC:
+# 2. База (3 ГБ) — с Mac, а не импортом 50 ГБ заново (на Mac)
 scp ~/Desktop/FireSync/backend/data/firesync.sqlite3 ЛОГИН@СЕРВЕР:/tmp/
-shasum -a 256 ~/Desktop/FireSync/backend/data/firesync.sqlite3
-# НА СЕРВЕРЕ: переложить и сверить сумму
-sudo mv /tmp/firesync.sqlite3 /srv/FireSync/backend/data/ && sudo chown -R firesync /srv/FireSync/backend/data
-sha256sum /srv/FireSync/backend/data/firesync.sqlite3
+# на сервере
+sudo mv /tmp/firesync.sqlite3 /srv/FireSync/backend/data/
+
+# 3. Всё остальное одной командой: пакеты, Node.js, сборка сайта, службы, nginx, HTTPS
+cd /srv/FireSync
+sudo bash backend/deploy/setup_server.sh ваш-домен.com --https ваша@почта.com
 ```
 
-```bash
-# 3. API как служба (сам качает новые данные NASA) и nginx. Сначала замените YOUR-... в deploy/
-sudo cp /srv/FireSync/backend/deploy/firesync-api.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable --now firesync-api
-sudo cp /srv/FireSync/backend/deploy/nginx.conf /etc/nginx/sites-available/firesync
-sudo ln -s /etc/nginx/sites-available/firesync /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d api.YOUR-DOMAIN
-curl https://api.YOUR-DOMAIN/status
-```
+Обновить код на сервере: `sudo -u firesync git pull`, затем та же команда `setup_server.sh` (без `--https`).
+Логи: `journalctl -u firesync-api -f` и `journalctl -u firesync-web -f`.
+Подробно — `docs/operations/deployment.md`.
