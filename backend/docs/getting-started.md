@@ -5,10 +5,9 @@ This page takes you from a fresh checkout to a running API and a built documenta
 ## Requirements
 
 - **Python 3.11 or newer.** The data pipeline package declares `requires-python = ">=3.11"`.
-- The pipeline database `data_pipeline/var/fires.sqlite3`. It is several gigabytes and is **not in git**
-  (`*.sqlite3` is ignored), so it has to be copied from whoever holds it. See
-  [Deployment](operations/deployment.md#copy-the-database) for how to verify a copy with a checksum.
-- A NASA FIRMS `MAP_KEY` is needed **only** to download new data, not to run the API on an existing database.
+- The FireSync database `data/firesync.sqlite3` (about 3 GB, **not in git**). Either import it from the archive
+  CSV (below) or copy it from a teammate.
+- A NASA FIRMS `MAP_KEY` in `data_pipeline/.env` is needed **only** for the automatic updates, not to run the API.
 
 ## Install
 
@@ -42,17 +41,16 @@ API still starts if you skip this step, but the editable install is the supporte
     Start tools as `python -m uvicorn ...` and `python -m pytest`. This guarantees that the interpreter
     from the active virtual environment is used rather than a globally installed `uvicorn`.
 
-## Prepare the database
+## Import the archive (once)
+
+Put the archive export at `data/raw/NASA_FIRMS_2000_2025.csv` and run:
 
 ```bash
-python -m fires_data init
+python importer.py
 ```
 
-This creates the schema if it is missing, enables WAL mode and registers the `world` scope. It never deletes
-existing observations, so it is safe to run on a database that already has data.
-
-Run it from `data_pipeline/`, or pass `--db` with an absolute path. Which database file is used is decided by
-[the pipeline settings](operations/configuration.md#where-the-database-is-found).
+It takes about ten minutes and can be stopped with Ctrl+C and continued later. Details are in
+[Archive import and NASA updates](pipeline/archive-and-updates.md).
 
 ## Run the API
 
@@ -64,15 +62,19 @@ python -m uvicorn main:app --reload
 |---|---|
 | <http://localhost:8000/docs> | Interactive Swagger UI. Every endpoint has a **Try it out** button. |
 | <http://localhost:8000/health> | Returns `{"status": "ok"}` when the server is up. |
-| <http://localhost:8000/status> | What data is loaded and whether the index is ready. |
+| <http://localhost:8000/status> | What is stored and what the automatic NASA update is doing. |
 
-On the **first start** the fast calendar index does not exist yet. It is built in the background, which takes
-about a minute for the full database. Until then, data endpoints answer `503` with a `Retry-After: 30` header
-and `/status` reports `"status": "building_index"`. You can also build it explicitly:
+About a minute after start the API begins downloading the days after the archive from NASA, in the background.
+The site keeps working meanwhile; new days appear as they arrive.
 
-```bash
-python grid_index.py
+## Show the data in the website
+
+```text
+# fire-calendar/.env.local
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 ```
+
+Then `npm run dev` in `fire-calendar/` and open <http://localhost:3000/explore>. See [Frontend](development/frontend.md).
 
 ## Try a request
 

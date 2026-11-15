@@ -1,15 +1,18 @@
 """
 main.py — FireSync API
 
-Run:            `uvicorn main:app --reload`
+Run:            `python -m uvicorn main:app --reload`
 
 Interactive documentation: <http://localhost:8000/docs> (every request can be tried with the buttons).
 
 Who is responsible for what:
 
-* `main.py` — API endpoints: accept parameters, validate them, return JSON
-* `grid_index.py` — fast calendar index (a fraction of a second instead of ~25 seconds)
-* `db.py` — fire points and the reference calculation straight from the partner's database
+* `main.py` — the app, the general endpoints (/calendar, /cells, ...), errors, CORS
+* `frontend_api.py` — the /api/... endpoints that the fire-calendar frontend calls
+* `store.py` — the database (data/firesync.sqlite3): all MODIS + VIIRS NOAA-20 detections
+* `reports.py` — calendar, months, map cells and points computed from the database
+* `importer.py` — loads the 2000–2025 archive CSV into the database (run once)
+* `updater.py` — downloads new days from the NASA FIRMS API in the background
 * `analytics.py` — math: coloring, MODIS/VIIRS harmonization, anomalies
 * `config.py` — settings
 """
@@ -17,8 +20,9 @@ Who is responsible for what:
 import csv
 import io
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from datetime import date
+from itertools import islice
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, Query, Request
@@ -29,48 +33,52 @@ from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 
 import config  # first: adds the data_pipeline folder with the partner's module
 import analytics
-import db
-import grid_index
+import frontend_api
+import reports
+import store
+import updater
 from fires_data.errors import PipelineError, StorageError
 
 DESCRIPTION = """
-**FireSync** — календарь пожарной активности по спутникам NASA **MODIS** и **VIIRS**,
-сведённым на общую сетку 0.1°.
+**FireSync** — a fire-activity calendar from the NASA **MODIS** (Terra + Aqua) and **VIIRS NOAA-20**
+satellites, placed on one common 0.1° grid. Data: the 2000–2025 archive plus automatic daily NASA FIRMS updates.
 
-**С чего начать**
-1. `/regions` — готовые регионы; или задайте свои границы `west, south, east, north`.
-2. `/calendar` — активность по дням, `/calendar/monthly` — по месяцам.
-3. `/cells` — данные для карты (GeoJSON), `/harmonization` — сведение MODIS и VIIRS в один ряд.
+**Where to start**
+1. `/api/...` — the endpoints the fire-calendar frontend uses (`/api/meta/`, `/api/calendar/`, ...).
+2. `/regions` — ready-made regions; or give your own bounds `west, south, east, north`.
+3. `/calendar` — activity per day, `/calendar/monthly` — per month, `/cells` — map layer (GeoJSON).
+4. `/status` — what is stored and what the automatic NASA update is doing.
 
-**Единица измерения** — «активная клетка»: клетка 0.1° (~10 км), где за сутки спутник
-заметил хотя бы один очаг. Это не число пожаров и не площадь гари.
-Все даты — UTC. `null` значит «данные за этот день не загружены», а не «пожаров не было».
+**Unit** — an "active cell": a 0.1° cell (~10 km) where a satellite detected at least one fire during a
+UTC day. It is not the number of fires and not the burned area.
+All dates are UTC. `null` means "no data for this day", not "no fires".
 """
 
 TAGS = [
-    {"name": "Система", "description": "Проверка, что сервер и данные в порядке"},
-    {"name": "Регионы", "description": "Готовые области для демо"},
-    {"name": "Календарь", "description": "Активность по дням и месяцам"},
-    {"name": "Карта", "description": "Клетки и точки пожаров для карты"},
-    {"name": "Наука", "description": "Гармонизация MODIS ↔ VIIRS и аномалии"},
-    {"name": "Выгрузка", "description": "Скачать данные файлом"},
+    {"name": "Frontend (fire-calendar)", "description": "What the website calls"},
+    {"name": "System", "description": "Is the server alive, what data is stored"},
+    {"name": "Regions", "description": "Ready-made areas"},
+    {"name": "Calendar", "description": "Activity per day and month"},
+    {"name": "Map", "description": "Cells and individual detections for a map"},
+    {"name": "Science", "description": "MODIS ↔ VIIRS harmonization and anomalies"},
+    {"name": "Export", "description": "Download data as a file"},
 ]
 
 
 @asynccontextmanager
 async def lifespan(app):
-    """Application startup/shutdown: starts the background thread that refreshes the index."""
-    # Background thread: notices new NASA downloads on its own and refreshes the index
-    grid_index.start_auto_refresh(config.AUTO_REFRESH_SECONDS)
+    """Startup: the background thread that downloads new NASA days (see updater.py)."""
+    updater.start_background()
     yield
 
 
-app = FastAPI(title="FireSync API", version="1.0.0", description=DESCRIPTION,
+app = FastAPI(title="FireSync API", version="2.0.0", description=DESCRIPTION,
               openapi_tags=TAGS, lifespan=lifespan)
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)   # large responses are compressed 5–10 times
 app.add_middleware(CORSMiddleware, allow_origins=config.FRONTEND_URLS, allow_methods=["GET"],
                    allow_headers=["*"], expose_headers=["X-Process-Time-Ms", "Content-Disposition", "X-Total-Rows"])
+app.include_router(frontend_api.router)
 
 
 @app.middleware("http")
@@ -90,7 +98,7 @@ def _error(status, message, **extra):
 
 @app.exception_handler(ValueError)
 async def bad_request(request: Request, exc: ValueError):
-    """ValueError (a violated business rule, such as reversed dates) → HTTP 400."""
+    """ValueError (a violated rule, such as reversed dates) → HTTP 400."""
     return _error(400, str(exc))
 
 
@@ -99,26 +107,24 @@ async def invalid_params(request: Request, exc: RequestValidationError):
     """Malformed parameter (not a date, out of range) → HTTP 422 with a `details` list of `{param, message}`."""
     details = [{"param": str(err["loc"][-1]), "message": err["msg"]} for err in exc.errors()]
     text = "; ".join(f"{d['param']}: {d['message']}" for d in details)
-    return _error(422, f"Неверные параметры запроса — {text}", details=details)
+    return _error(422, f"Invalid request parameters: {text}", details=details)
 
 
-@app.exception_handler(grid_index.IndexNotReady)
-async def index_not_ready(request: Request, exc: grid_index.IndexNotReady):
-    """The index is still being built → HTTP 503 with `Retry-After: 30`."""
+@app.exception_handler(store.StoreNotReady)
+async def store_not_ready(request: Request, exc: store.StoreNotReady):
+    """The database has not been created yet → HTTP 503."""
     response = _error(503, str(exc))
-    response.headers["Retry-After"] = "30"
+    response.headers["Retry-After"] = "60"
     return response
 
 
 @app.exception_handler(StorageError)
 async def storage_error(request: Request, exc: StorageError):
-    """The pipeline database is missing or unreadable → HTTP 503."""
-    return _error(503, f"База данных недоступна: {exc}")
+    return _error(503, "The database is not available. Check FIRESYNC_DB_PATH and restart.")
 
 
 @app.exception_handler(PipelineError)
 async def pipeline_error(request: Request, exc: PipelineError):
-    """Any other pipeline failure → HTTP 500."""
     return _error(500, str(exc))
 
 
@@ -129,22 +135,20 @@ class Period:
 
     def __init__(
         self,
-        date_from: Annotated[date, Query(description="Первый день периода (UTC), ГГГГ-ММ-ДД",
-                                         openapi_examples={"aug": {"summary": "Август 2024 — загружен целиком",
-                                                                   "value": "2024-08-01"}})],
-        date_to: Annotated[date, Query(description="Последний день периода включительно",
-                                       openapi_examples={"aug": {"summary": "Август 2024",
-                                                                 "value": "2024-08-31"}})],
+        date_from: Annotated[date, Query(description="First day of the period (UTC), YYYY-MM-DD",
+                                         openapi_examples={"aug": {"summary": "August 2024", "value": "2024-08-01"}})],
+        date_to: Annotated[date, Query(description="Last day of the period, inclusive",
+                                       openapi_examples={"aug": {"summary": "August 2024", "value": "2024-08-31"}})],
     ):
         if date_to < date_from:
-            raise ValueError("date_to раньше, чем date_from.")
+            raise ValueError("date_to is earlier than date_from.")
         self.start, self.end = date_from, date_to
         self.days = (date_to - date_from).days + 1
 
     def limit(self, max_days):
         """Reject the period if it is longer than `max_days` (raises ValueError → HTTP 400). Returns self."""
         if self.days > max_days:
-            raise ValueError(f"Слишком длинный период: {self.days} дн. Для этого запроса максимум {max_days}.")
+            raise ValueError(f"The period is too long: {self.days} days. This request allows at most {max_days}.")
         return self
 
 
@@ -153,36 +157,32 @@ class Area:
 
     def __init__(
         self,
-        region: Annotated[str | None, Query(description="Готовый регион из `/regions`",
-                                            openapi_examples={"ukraine": {"summary": "Украина",
+        region: Annotated[str | None, Query(description="Ready-made region from `/regions`",
+                                            openapi_examples={"ukraine": {"summary": "Ukraine",
                                                                           "value": "ukraine"}})] = None,
-        west: Annotated[float | None, Query(ge=-180, le=180, description="Западная граница (долгота)")] = None,
-        south: Annotated[float | None, Query(ge=-90, le=90, description="Южная граница (широта)")] = None,
-        east: Annotated[float | None, Query(ge=-180, le=180, description="Восточная граница (долгота)")] = None,
-        north: Annotated[float | None, Query(ge=-90, le=90, description="Северная граница (широта)")] = None,
+        west: Annotated[float | None, Query(ge=-180, le=180, description="Western boundary (longitude)")] = None,
+        south: Annotated[float | None, Query(ge=-90, le=90, description="Southern boundary (latitude)")] = None,
+        east: Annotated[float | None, Query(ge=-180, le=180, description="Eastern boundary (longitude)")] = None,
+        north: Annotated[float | None, Query(ge=-90, le=90, description="Northern boundary (latitude)")] = None,
     ):
         corners = (west, south, east, north)
         given = [v is not None for v in corners]
-        if region is not None:
-            if any(given):
-                raise ValueError("Укажите либо region, либо west/south/east/north — не одновременно.")
-            if region not in config.REGIONS:
-                raise ValueError(f"Неизвестный регион '{region}'. Список регионов: /regions")
-            info = config.REGIONS[region]
-            self.region, self.scope_id = region, info["scope"]
-            self.bbox = tuple(info["bbox"]) if info["bbox"] else None
-            return
+        if region is not None and any(given):
+            raise ValueError("Use either region or west/south/east/north, not both.")
         if any(given) and not all(given):
-            raise ValueError("Нужны все четыре границы: west, south, east, north (или ни одной).")
-        if all(given) and not (west < east and south < north):
-            raise ValueError("Должно быть west < east и south < north (сначала долгота, потом широта).")
-        self.region, self.scope_id = None, config.SCOPE_ID
+            raise ValueError("All four bounds are required: west, south, east, north (or none of them).")
+        self.region = region if region is not None else (None if all(given) else "world")
         self.bbox = corners if all(given) else None
+        self.where = reports.area(self.region, self.bbox)
 
 
-def _area_info(area, computed_bbox):
-    return {"region": area.region, "scope_id": area.scope_id,
-            "requested_bbox": list(area.bbox) if area.bbox else None, "bbox": computed_bbox}
+def _area_info(area):
+    return {"region": area.region, "requested_bbox": list(area.bbox) if area.bbox else None,
+            "bbox": area.where["bbox"]}
+
+
+def _db():
+    return closing(store.connect())
 
 
 # ---------- System ----------
@@ -193,79 +193,70 @@ def root():
     return RedirectResponse("/docs")
 
 
-@app.get("/health", tags=["Система"], summary="Сервер жив?")
+@app.get("/health", tags=["System"], summary="Is the server alive?")
 def health():
-    """Liveness check: returns `{"status": "ok"}` if the server is running. Does not touch the databases."""
+    """Liveness check: returns `{"status": "ok"}` if the server is running. Does not touch the database."""
     return {"status": "ok"}
 
 
-@app.get("/status", tags=["Система"], summary="Какие данные загружены и насколько они свежие")
+@app.get("/status", tags=["System"], summary="What data is stored and how fresh it is")
 def status():
     """
-    What data is loaded (first/last day and day count per series), whether the fast index is ready,
-    the state of the background refresh, and whether the pipeline database was found.
+    Stored days per sensor (first/last day, NRT days, detections), the archive import,
+    and the state of the automatic NASA update.
     """
-    ready = grid_index.is_ready()
-    summary = grid_index.loaded_summary() if ready else None
-    return {
-        "status": "ok" if ready else "building_index",
-        "data": summary["scopes"] if summary else {},
-        "index": {"ready": ready,
-                  "last_refresh": summary["last_refresh"] if summary else None,
-                  "cell_rows": summary["cell_rows"] if summary else None,
-                  "size_mb": summary["size_mb"] if summary else None,
-                  "auto_refresh": grid_index.auto_refresh_state()},
-        "partner_database": db.database_info(),
-        "version": app.version,
-    }
+    try:
+        with _db() as conn:
+            stored = store.summary(conn)
+    except store.StoreNotReady as exc:
+        return {"status": "no_database", "message": str(exc), "update": updater.status(), "version": app.version}
+    return {"status": "ok", "data": stored["coverage"], "database": stored,
+            "update": updater.status(), "version": app.version}
 
 
 # ---------- Regions ----------
 
-@app.get("/regions", tags=["Регионы"], summary="Готовые регионы для демо")
+@app.get("/regions", tags=["Regions"], summary="Ready-made regions")
 def regions():
-    """The ready-made regions from `config.REGIONS`: id, name, bbox `[west, south, east, north]`, scope."""
-    return [{"id": key, "name": info["name"], "bbox": info["bbox"], "scope": info["scope"]}
-            for key, info in config.REGIONS.items()]
+    """The ready-made regions from `config.REGIONS`: id, name, bbox `[west, south, east, north]` (null = world)."""
+    return [{"id": key, "name": info["name"], "bbox": info["bbox"]} for key, info in config.REGIONS.items()]
 
 
 # ---------- Calendar ----------
 
-@app.get("/calendar", tags=["Календарь"], summary="Активность по дням: MODIS и VIIRS")
+def _custom_limit(area, period, max_days):
+    period.limit(max_days if area.region else min(max_days, config.MAX_CUSTOM_AREA_DAYS))
+
+
+@app.get("/calendar", tags=["Calendar"], summary="Activity per day: MODIS and VIIRS")
 def calendar(
     period: Annotated[Period, Depends()],
     area: Annotated[Area, Depends()],
-    engine: Annotated[Literal["fast", "reference"], Query(
-        description="`fast` — наш индекс (мгновенно). `reference` — оригинальный расчёт напарника "
-                    "(~25 с, для сверки)")] = "fast",
-    include_windows: Annotated[bool, Query(description="Добавить список исходных срезов NASA")] = False,
+    include_windows: Annotated[bool, Query(description="Add the list of stored NASA day blocks")] = False,
 ):
     """
     For each day: how many 0.1° cells were active according to MODIS (Terra+Aqua)
     and VIIRS NOAA-20, how many cells both saw, and a level 0–4 for coloring.
     """
-    if engine == "reference":
-        period.limit(config.MAX_REFERENCE_DAYS)
-        report = db.reference_calendar(area.scope_id, period.start, period.end, area.bbox)
-    else:
-        period.limit(config.MAX_CALENDAR_DAYS)
-        report = grid_index.calendar(area.scope_id, period.start, period.end, area.bbox)
+    _custom_limit(area, period, config.MAX_CALENDAR_DAYS)
+    with _db() as conn:
+        report = reports.calendar(conn, area.where, period.start, period.end)
     if not include_windows:
         report.pop("input_windows", None)
-    report["engine"] = engine
-    report["area"] = _area_info(area, report["bbox"])
+    report["area"] = _area_info(area)
     return analytics.add_daily_levels(report)
 
 
-@app.get("/calendar/monthly", tags=["Календарь"], summary="Активность по месяцам (для календаря год × месяц)")
+@app.get("/calendar/monthly", tags=["Calendar"], summary="Activity per month (for a year × month calendar)")
 def calendar_monthly(period: Annotated[Period, Depends()], area: Annotated[Area, Depends()]):
     """
-    For each month: the sum of active cells over the days ("cell-days") and data completeness:
-    `complete` — all days loaded, `partial` — some of them, `missing` — none.
+    For each month: the sum of active cells over the days ("cell-days"), detections, the area of the distinct
+    active cells, FRP and completeness: `complete` — all days stored, `partial` — some, `missing` — none.
     """
-    period.limit(40 * 366)
-    result = grid_index.monthly(area.scope_id, period.start, period.end, area.bbox)
-    result["area"] = _area_info(area, result["bbox"])
+    _custom_limit(area, period, 40 * 366)
+    with _db() as conn:
+        result = reports.monthly(conn, area.where, period.start, period.end)
+    result["area"] = _area_info(area)
     return analytics.add_monthly_levels(result)
 
 
@@ -280,23 +271,25 @@ def _auto_resolution(bbox):
     return 0.1 if span <= 10 else 0.2 if span <= 30 else 0.5 if span <= 90 else 1.0
 
 
-@app.get("/cells", tags=["Карта"], summary="Активные клетки для карты (GeoJSON)")
+@app.get("/cells", tags=["Map"], summary="Active cells for a map (GeoJSON)")
 def cells(
     period: Annotated[Period, Depends()],
     area: Annotated[Area, Depends()],
     resolution: Annotated[float | None, Query(
-        description="Размер клетки в градусах: 0.1, 0.2, 0.5, 1, 2 или 5. Не задан — подберётся сам")] = None,
+        description="Cell size in degrees: 0.1, 0.2, 0.5, 1, 2 or 5. Not given — chosen automatically")] = None,
 ):
     """
     Points at cell centers with the number of active days — a ready-made layer for MapLibre/Leaflet
-    (e.g. a heatmap). The most active cells come first.
+    (e.g. a heatmap). The most active cells come first. Up to 92 days per request.
     """
-    period.limit(config.MAX_CALENDAR_DAYS)
-    resolution = resolution or _auto_resolution(area.bbox)
+    period.limit(config.MAX_MAP_DAYS)
+    bbox = None if area.where["cells"] is None else area.where["bbox"]
+    resolution = resolution or _auto_resolution(bbox)
     if not any(abs(resolution - r) < 1e-9 for r in RESOLUTIONS):
-        raise ValueError(f"resolution должен быть одним из {list(RESOLUTIONS)}.")
-    found = grid_index.map_cells(area.scope_id, period.start, period.end, area.bbox,
-                                 step=round(resolution * 10), limit=config.MAX_MAP_CELLS)
+        raise ValueError(f"resolution must be one of {list(RESOLUTIONS)}.")
+    with _db() as conn:
+        found = reports.map_cells(conn, area.where, period.start, period.end,
+                                  step=round(resolution * 10), limit=config.MAX_MAP_CELLS)
     breaks = analytics.color_breaks(c["active_days"] for c in found["cells"])
     features = [{
         "type": "Feature",
@@ -308,29 +301,33 @@ def cells(
     } for c in found["cells"]]
     return {
         "type": "FeatureCollection",
-        "bbox": found["area"]["bbox"],
+        "bbox": area.where["bbox"],
         "features": features,
         "meta": {"date_from": period.start.isoformat(), "date_to": period.end.isoformat(),
                  "resolution_degrees": resolution, "cells": len(features), "truncated": found["truncated"],
                  "color_scale": {"unit": "active_days", "levels": 5, "breaks": breaks},
-                 "area": _area_info(area, found["area"]["bbox"])},
+                 "area": _area_info(area)},
     }
 
 
-@app.get("/points", tags=["Карта"], summary="Отдельные обнаружения пожаров (до 7 дней)")
+@app.get("/points", tags=["Map"], summary="Individual fire detections (up to 7 days)")
 def points(
     period: Annotated[Period, Depends()],
     area: Annotated[Area, Depends()],
-    sensor: Annotated[Literal["MODIS", "VIIRS"] | None, Query(description="Только один прибор")] = None,
+    sensor: Annotated[Literal["MODIS", "VIIRS"] | None, Query(description="Only one sensor")] = None,
     limit: Annotated[int, Query(ge=1, le=config.MAX_POINTS_PER_PAGE)] = 1000,
-    offset: Annotated[int, Query(ge=0, description="Сколько точек пропустить (следующая страница)")] = 0,
-    format: Annotated[Literal["json", "geojson"], Query(description="json — список, geojson — слой карты")] = "json",
+    offset: Annotated[int, Query(ge=0, description="How many points to skip (next page)")] = 0,
+    format: Annotated[Literal["json", "geojson"], Query(description="json — a list, geojson — a map layer")] = "json",
 ):
-    """Points as NASA sent them: time, coordinates, satellite, power (FRP). Returned in pages."""
+    """Detections as NASA reported them: time, coordinates, satellite, power (FRP). Returned in pages."""
     period.limit(config.MAX_POINT_DAYS)
-    rows = db.get_points(area.scope_id, period.start, period.end, area.bbox, sensor, limit, offset)
-    page = {"limit": limit, "offset": offset, "count": len(rows), "has_more": len(rows) == limit,
-            "next_offset": offset + limit if len(rows) == limit else None}
+    with _db() as conn:
+        rows = list(islice(reports.points(conn, area.where, period.start, period.end, sensor),
+                           offset, offset + limit + 1))
+    more = len(rows) > limit
+    rows = rows[:limit]
+    page = {"limit": limit, "offset": offset, "count": len(rows), "has_more": more,
+            "next_offset": offset + limit if more else None}
     if format == "geojson":
         return {"type": "FeatureCollection", "meta": page, "features": [
             {"type": "Feature", "geometry": {"type": "Point", "coordinates": [r["longitude"], r["latitude"]]},
@@ -340,81 +337,89 @@ def points(
 
 # ---------- Science ----------
 
-@app.get("/harmonization", tags=["Наука"], summary="Сведение MODIS и VIIRS в единый ряд")
+@app.get("/harmonization", tags=["Science"], summary="Merging MODIS and VIIRS into one series")
 def harmonization(
     period: Annotated[Period, Depends()],
     area: Annotated[Area, Depends()],
     split_date: Annotated[date | None, Query(
-        description="Первый день проверки. До него подбирается коэффициент, после — проверяется. "
-                    "Не задан — последняя треть периода")] = None,
+        description="First test day. The coefficient is fitted before it and checked after it. "
+                    "Not given — the last third of the period")] = None,
 ):
     """
     The main task of the challenge. We fit a coefficient k (MODIS ≈ k × VIIRS) on one part of the
     days and honestly check it on other days that the model has not seen.
     `series` is a single series where it does not matter which satellite supplied the data.
     """
-    period.limit(config.MAX_CALENDAR_DAYS)
+    _custom_limit(area, period, config.MAX_CALENDAR_DAYS)
     split = split_date or analytics.default_split(period.start, period.end)
     if not period.start < split <= period.end:
-        raise ValueError("split_date должен лежать внутри периода (и не в первый день).")
-    report = grid_index.calendar(area.scope_id, period.start, period.end, area.bbox)
+        raise ValueError("split_date must lie inside the period and not on its first day.")
+    with _db() as conn:
+        report = reports.calendar(conn, area.where, period.start, period.end)
     result = analytics.harmonize(report, split)
-    result["area"] = _area_info(area, report["bbox"])
+    result["area"] = _area_info(area)
     result["date_from"], result["date_to"] = period.start.isoformat(), period.end.isoformat()
     return result
 
 
-@app.get("/anomaly", tags=["Наука"], summary="Месяц против нормы прошлых лет")
+@app.get("/anomaly", tags=["Science"], summary="A month against the norm of earlier years")
 def anomaly(
     year: Annotated[int, Query(ge=2000, le=2100, openapi_examples={"y": {"summary": "2024", "value": 2024}})],
-    month: Annotated[int, Query(ge=1, le=12, openapi_examples={"m": {"summary": "Август", "value": 8}})],
+    month: Annotated[int, Query(ge=1, le=12, openapi_examples={"m": {"summary": "August", "value": 8}})],
     area: Annotated[Area, Depends()],
     series: Annotated[Literal["modis", "viirs"], Query(
-        description="По какому прибору сравнивать (у MODIS самая длинная история)")] = "modis",
+        description="Which sensor to compare (MODIS has the longest history)")] = "modis",
 ):
     """
     Compares the chosen month with the median of the same month in other years:
     by how many percent it is above or below normal and what rank it has among all years.
     """
-    loaded = grid_index.loaded_summary()["scopes"].get(area.scope_id)
-    if not loaded:
-        raise ValueError(f"В области данных '{area.scope_id}' ничего не загружено.")
-    first = min(v["first_day"] for v in loaded.values())
-    last = max(v["last_day"] for v in loaded.values())
-    start, end = analytics.full_years(first, last)
-    months = grid_index.monthly(area.scope_id, start, end, area.bbox)
+    if area.region is None:
+        raise ValueError("The anomaly needs a ready-made region (many years of data).")
+    with _db() as conn:
+        coverage = store.coverage(conn)
+        if not coverage:
+            raise ValueError("Nothing is stored yet.")
+        start, end = analytics.full_years(min(v["first_day"] for v in coverage.values()),
+                                          max(v["last_day"] for v in coverage.values()))
+        months = reports.monthly(conn, area.where, start, end)
     result = analytics.anomaly(months["months"], year, month, series)
-    result["area"] = _area_info(area, months["bbox"])
+    result["area"] = _area_info(area)
     return result
 
 
 # ---------- Export ----------
 
-@app.get("/export.csv", tags=["Выгрузка"], summary="Скачать точки пожаров в CSV (до 31 дня)")
+POINT_FIELDS = ["observed_at", "acq_date", "acq_time", "sensor", "satellite", "latitude", "longitude",
+                "frp_mw", "brightness_k", "brightness2_k", "scan_km", "track_km", "confidence",
+                "daynight", "type", "version"]
+
+
+@app.get("/export.csv", tags=["Export"], summary="Download fire detections as CSV (up to 31 days)")
 def export_csv(
     period: Annotated[Period, Depends()],
     area: Annotated[Area, Depends()],
-    sensor: Annotated[Literal["MODIS", "VIIRS"] | None, Query(description="Только один прибор")] = None,
+    sensor: Annotated[Literal["MODIS", "VIIRS"] | None, Query(description="Only one sensor")] = None,
 ):
     """The file is streamed: the download starts immediately, the server does not hold it in memory."""
     period.limit(config.MAX_EXPORT_DAYS)
-    total = db.count_points(area.scope_id, period.start, period.end, area.bbox, sensor,
-                            cap=config.MAX_EXPORT_ROWS)
+    with _db() as conn:
+        total = reports.detection_count(conn, area.where, period.start, period.end, sensor)
     if total > config.MAX_EXPORT_ROWS:
-        raise ValueError(f"Слишком много точек (больше {config.MAX_EXPORT_ROWS:,}). "
-                         "Уменьшите область или период.".replace(",", " "))
+        raise ValueError(f"Too many detections ({total:,}; the limit is {config.MAX_EXPORT_ROWS:,}). "
+                         "Choose a smaller area or a shorter period.")
 
     def generate():
         buffer = io.StringIO()
-        writer = csv.DictWriter(buffer, fieldnames=db.POINT_FIELDS)
+        writer = csv.DictWriter(buffer, fieldnames=POINT_FIELDS, extrasaction="ignore")
         writer.writeheader()
-        for row in db.stream_points(area.scope_id, period.start, period.end, area.bbox, sensor,
-                                    cap=config.MAX_EXPORT_ROWS):
-            writer.writerow(row)
-            if buffer.tell() > 64_000:      # send in chunks of roughly 64 KB
-                yield buffer.getvalue()
-                buffer.seek(0)
-                buffer.truncate()
+        with _db() as conn:
+            for row in reports.points(conn, area.where, period.start, period.end, sensor):
+                writer.writerow(row)
+                if buffer.tell() > 64_000:      # send in chunks of roughly 64 KB
+                    yield buffer.getvalue()
+                    buffer.seek(0)
+                    buffer.truncate()
         yield buffer.getvalue()
 
     name = f"firesync_{area.region or 'area'}_{period.start}_{period.end}.csv"

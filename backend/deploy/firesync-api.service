@@ -14,7 +14,8 @@ User=firesync
 WorkingDirectory=/srv/FireSync/backend
 # Address of the website (frontend) that is allowed to call the API
 Environment=FRONTEND_URLS=https://YOUR-FRONTEND-DOMAIN
-ExecStart=/srv/FireSync/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --workers 2 --proxy-headers
+# NASA updates run inside the API (updater.py); one process is enough and keeps one updater
+ExecStart=/srv/FireSync/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers
 Restart=always
 RestartSec=3
 

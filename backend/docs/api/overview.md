@@ -115,13 +115,14 @@ Limits protect the server from heavy requests. They live in `config.py`.
 
 | Endpoint | Maximum period | Other limits |
 |---|---|---|
-| `/calendar` (`engine=fast`) | 3660 days (~10 years) | |
-| `/calendar` (`engine=reference`) | 366 days | Slow: tens of seconds |
-| `/calendar/monthly` | 14 640 days (40 years) | |
-| `/cells` | 3660 days | At most 20 000 cells; `truncated` flag if cut |
+| `/calendar` | 3660 days (~10 years) for a region | Own rectangle: 366 days |
+| `/calendar/monthly` | 14 640 days (40 years) for a region | Own rectangle: 366 days |
+| `/cells` | 92 days | At most 20 000 cells; `truncated` flag if cut |
 | `/points` | 7 days | At most 5000 points per page |
-| `/harmonization` | 3660 days | |
-| `/export.csv` | 31 days | At most 200 000 rows |
+| `/harmonization` | 3660 days for a region | Own rectangle: 366 days |
+| `/export.csv` | 31 days | At most 1 000 000 rows (streamed) |
+| `/api/hotspots/` | one month | At most 10 000 cell-days; strongest per day kept, `truncated` and `total` |
+| `/api/export/` | one month or one day | At most 1 000 000 rows |
 | `/anomaly` | n/a (uses a year and month) | Needs at least 3 other complete years |
 
 Exceeding a limit returns `400` with a message that states the maximum.

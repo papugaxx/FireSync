@@ -3,8 +3,9 @@
 FireSync is an API for a fire-activity calendar built from the NASA **MODIS** and **VIIRS** satellite
 fire detections, placed on one common 0.1° grid.
 
-The NASA data is downloaded by the data pipeline (`data_pipeline/`). This backend turns it into a
-calendar, a map layer, a harmonized MODIS ↔ VIIRS series, and CSV exports.
+The 2000–2025 archive and every new NASA FIRMS day are stored in one database (`data/firesync.sqlite3`).
+This backend turns them into a calendar, a map layer, a harmonized MODIS ↔ VIIRS series and CSV exports,
+and serves the fire-calendar website.
 
 ## Where to start
 
@@ -15,7 +16,7 @@ calendar, a map layer, a harmonized MODIS ↔ VIIRS series, and CSV exports.
 | Understand the MODIS ↔ VIIRS merge | [Harmonization](concepts/harmonization.md) |
 | See how the pieces fit and why it is fast | [Architecture](concepts/architecture.md) |
 | Call the API from a frontend | [HTTP API overview](api/overview.md) and [Endpoints](api/endpoints.md) |
-| Download or update NASA data | [Command line](pipeline/cli.md) and [Data model](pipeline/data-model.md) |
+| Import the archive, understand the NASA updates | [Archive import and NASA updates](pipeline/archive-and-updates.md) |
 | Configure or deploy a server | [Configuration](operations/configuration.md) and [Deployment](operations/deployment.md) |
 | Fix a problem | [Troubleshooting](operations/troubleshooting.md) |
 | Run tests, work on the website, or edit these docs | [Testing](development/testing.md), [Frontend](development/frontend.md), [Writing documentation](development/documentation.md) |
@@ -24,22 +25,22 @@ calendar, a map layer, a harmonized MODIS ↔ VIIRS series, and CSV exports.
 ## How it fits together
 
 ```
-NASA FIRMS ──(data pipeline)──► data_pipeline/var/fires.sqlite3
-                                        │  read-only
-                                        ▼
-                     grid_index.py: points → 0.1° cells per day
-                                        │
-                                        ▼
-                        cache/grid_index.sqlite3
-                                        │
-        browser ──► main.py (FastAPI) ──┘   + db.py for points and CSV
+NASA_FIRMS_2000_2025.csv ──(importer.py, once)──┐
+                                                 ▼
+NASA FIRMS API ──(updater.py, background)──► data/firesync.sqlite3
+                                                 │
+                     fire-calendar ──► /api/... ─┤  frontend_api.py + reports.py
+                     other clients ──► /calendar, /cells, ... (main.py)
 ```
 
 | Module | Responsibility |
 |---|---|
-| [`main`](reference/main.md) | API endpoints: accept parameters, validate them, return JSON |
-| [`grid_index`](reference/grid_index.md) | Fast calendar index: points are placed into cells once, so calendars are computed instantly |
-| [`db`](reference/db.md) | Data read straight from the pipeline database: individual points, CSV, reference calculation |
+| [`main`](reference/main.md) | General endpoints, errors, CORS; starts the background NASA updater |
+| [`frontend_api`](reference/frontend_api.md) | The `/api/...` endpoints of the fire-calendar website |
+| [`store`](reference/store.md) | The database: compressed day blocks of detections and region tables |
+| [`reports`](reference/reports.md) | Calendar, months, map cells and points for a region or rectangle |
+| [`importer`](reference/importer.md) | Loads the 2000–2025 archive CSV (once) |
+| [`updater`](reference/updater.md) | Downloads new days from the NASA FIRMS API |
 | [`analytics`](reference/analytics.md) | Math only: coloring levels, MODIS/VIIRS harmonization, anomalies |
 | [`config`](reference/config.md) | Settings: paths, regions, limits |
 | [`fires_data`](reference/pipeline.md) | The data pipeline package: NASA client, storage, parsing, calibration |
@@ -71,9 +72,13 @@ Full installation steps, including Windows, are in [Getting started](getting-sta
 ```text
 FireSync/
 ├── backend/               FastAPI app, fast index, deployment files, and this documentation
-│   ├── main.py            endpoints
-│   ├── grid_index.py      fast calendar index
-│   ├── db.py              raw points, CSV, reference calendar
+│   ├── main.py            general endpoints
+│   ├── frontend_api.py    /api/... for the website
+│   ├── store.py           the database (data/firesync.sqlite3)
+│   ├── reports.py         calendar, months, cells, points
+│   ├── importer.py        archive CSV → database
+│   ├── updater.py         NASA FIRMS API → database (background)
+│   ├── data/              database and raw/ archive CSV (not in git)
 │   ├── analytics.py       levels, harmonization, anomalies
 │   ├── config.py          settings
 │   ├── tests/             API tests

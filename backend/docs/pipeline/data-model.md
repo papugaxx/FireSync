@@ -88,7 +88,9 @@ Progress of `sync` runs: planned, completed, skipped and failed units, and a sta
 A single day of one product family can exist both as SP and as NRT. Readers never add them together. The
 "canonical" slice for each (family, day) is the SP slice if one is loaded (even if it is empty), otherwise
 the NRT slice. The pipeline implements this once as a SQL common table expression, `_canonical_cte`, and
-both the pipeline's `Store` and the API (`grid_index.py`, `db.py`) reuse it.
+the pipeline's `Store` uses it. (The FireSync API now reads its own database, `data/firesync.sqlite3`, which
+stores one product per day and sensor in the first place; see
+[Archive import and NASA updates](archive-and-updates.md).)
 
 Consequences:
 

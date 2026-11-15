@@ -92,13 +92,17 @@ Absolute error drops, but holdout R² is only **0.014**: the factor fixes the *l
 
 ```text
 FireSync/
-├── backend/                 FastAPI app, fast index, deployment files, docs
-│   ├── main.py              HTTP endpoints
-│   ├── grid_index.py        fast calendar index (points → 0.1° cells per day)
-│   ├── db.py                raw points, CSV export, reference calculation
+├── backend/                 FastAPI app, database, NASA updates, deployment files, docs
+│   ├── main.py              general HTTP endpoints, starts the NASA updater
+│   ├── frontend_api.py      the /api/... endpoints the website calls
+│   ├── store.py             the database: compressed day blocks + region tables
+│   ├── reports.py           calendar, months, map cells, points
+│   ├── importer.py          archive CSV (2000–2025) → database, once
+│   ├── updater.py           NASA FIRMS API → database, in the background
 │   ├── analytics.py         color levels, harmonization, anomalies
-│   ├── config.py            paths, regions, limits
-│   ├── tests/               API tests (synthetic temporary database)
+│   ├── config.py            paths, regions, update settings, limits
+│   ├── data/                firesync.sqlite3 + raw/NASA_FIRMS_2000_2025.csv (not in git)
+│   ├── tests/               tests on a generated archive in the real format
 │   ├── deploy/              systemd unit, nginx config, cron, update script
 │   ├── docs/ + mkdocs.yml   full documentation site
 │   └── data_pipeline/       NASA FIRMS loader + SQLite storage (package `fires_data`)
@@ -110,26 +114,27 @@ FireSync/
 ## How it works
 
 ```text
-NASA FIRMS ──(fires_data)──► data_pipeline/var/fires.sqlite3     raw detections (GBs, read-only for the API)
-                                      │
-                                      ▼
-                    grid_index.py: points → 0.1° cells per day
-                                      │
-                                      ▼
-                       cache/grid_index.sqlite3                   small derived index (safe to delete)
-                                      │
-            browser ──► main.py (FastAPI) ──┘   + db.py for raw points and CSV
+data/raw/NASA_FIRMS_2000_2025.csv (50 GB) ──(importer.py, once)──┐
+                                                                  ▼
+NASA FIRMS API ──(updater.py, every 3 h in the background)──► data/firesync.sqlite3 (~3 GB)
+                                                                  │
+                         fire-calendar ──► /api/... (frontend_api.py) ─┤  reports.py
+                         other clients ──► /calendar, /cells, ... (main.py) ┘
 ```
+
+The database holds 267 million MODIS (Terra + Aqua, 2000-11-01 →) and VIIRS NOAA-20 (2018-04-01 →) detections.
+All detections of one UTC day and sensor are one compressed block (about 11 bytes per detection), and per-region
+daily and monthly totals are precomputed, so the calendar answers in milliseconds.
 
 Key rules:
 
 - **Grid**: fixed WGS84 0.1° grid, origin (−180°, −90°), 3600 × 1800 cells, UTC days.
 - **MODIS** = Terra + Aqua (occupied cells merged). **VIIRS** = NOAA-20 only.
-- **SP over NRT**: per day and sensor family, standard-processing data is preferred, near-real-time is the fallback.
-- **Missing ≠ zero**: `null` / `"status": "missing"` means the day was not loaded.
+- **SP over NRT**: one product per day and sensor — final (SP) data when NASA has it, otherwise near-real-time; NRT is replaced by SP later, never added to it.
+- **Missing ≠ zero**: `null` / `"status": "missing"` means no data for that day.
 - **Regions are whole cells**: rectangles are expanded outward to grid lines, so adjacent regions never double count.
-- **Self-updating**: the API fingerprints the pipeline database and recomputes only changed days, with no restart.
-- **Verified**: the fast index matches the pipeline's reference calculation on all 31 days of August 2024 for the world and Ukraine, to the unit. `engine=reference` lets you recompute any request the slow way.
+- **Self-updating**: the API downloads new NASA days in the background and rebuilds only the changed months.
+- **Verified**: the tests load the same rows with the pipeline's own code and compare its `grid_calendar()` with ours day by day; the import was checked against the raw CSV.
 
 A monthly sum uses *cell-days*. A degree grid changes cell area with latitude, so it is not equal-area.
 
@@ -139,8 +144,8 @@ A monthly sum uses *cell-days*. A degree grid changes cell area with latitude, s
 
 - Python **3.11+**
 - Node.js (for the website)
-- The pipeline database `backend/data_pipeline/var/fires.sqlite3` (several GB, **not in git**). Copy it from whoever holds it, or build it with the pipeline.
-- A free [NASA FIRMS MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/), needed **only** to download new data.
+- The database `backend/data/firesync.sqlite3` (~3 GB, **not in git**): copy it from a teammate, or import it from the archive CSV (`python importer.py`, about 10 minutes).
+- A free [NASA FIRMS MAP_KEY](https://firms.modaps.eosdis.nasa.gov/api/map_key/) in `backend/data_pipeline/.env`, needed **only** for the automatic updates.
 
 ### Backend
 
@@ -151,7 +156,7 @@ python -m venv venv
 pip install -r requirements.txt
 pip install -e .\data_pipeline
 
-python -m fires_data init            # prepare the database schema (keeps existing data)
+python importer.py                   # once: data\raw\NASA_FIRMS_2000_2025.csv → data\firesync.sqlite3
 python -m uvicorn main:app --reload
 ```
 
@@ -162,11 +167,11 @@ cd backend
 python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 pip install -e ./data_pipeline
-python -m fires_data init
+python importer.py                   # once: data/raw/NASA_FIRMS_2000_2025.csv → data/firesync.sqlite3
 python -m uvicorn main:app --reload
 ```
 
-Open <http://localhost:8000/docs> for interactive Swagger. On first start the index is built in the background (about a minute); until then data endpoints return `503` with `Retry-After`. You can build it explicitly with `python grid_index.py`.
+Open <http://localhost:8000/docs> for interactive Swagger. About a minute after start the API begins downloading the days after the archive from NASA in the background (`/api/updates/` shows the progress).
 
 > Always start tools as `python -m uvicorn` / `python -m pytest` so the virtualenv's interpreter is used.
 
@@ -181,37 +186,41 @@ npm run dev
 - <http://localhost:3000>: landing page
 - <http://localhost:3000/explore>: calendar prototype
 
-Set `NEXT_PUBLIC_API_URL` in `.env.local` to point at the backend. While it is empty, the site serves mock data from `lib/mock.ts`.
+Set `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` in `fire-calendar/.env.local` to show the real data. While it is empty, the site serves mock data from `lib/mock.ts`.
 
-### Downloading NASA data
+### NASA data
+
+The archive (2000–2025) is imported once with `python importer.py`. Everything newer is downloaded by the API
+itself in the background (`updater.py`), using `FIRMS_MAP_KEY` from `backend/data_pipeline/.env`:
 
 ```bash
-cd backend/data_pipeline
-cp .env.example .env                 # then set FIRMS_MAP_KEY
-python -m fires_data doctor
-python -m fires_data availability
-python -m fires_data plan --area world --recent-days 1 --sources MODIS_NRT VIIRS_NOAA20_NRT
-python -m fires_data sync --area world --recent-days 1 --sources MODIS_NRT VIIRS_NOAA20_NRT --max-requests 2
+cd backend
+python updater.py --plan      # what would be downloaded
+python updater.py             # one update now
+python updater.py --status    # what is stored, what the last update did
 ```
 
-Never commit `.env` or paste the key anywhere. Downloads are resumable, atomic per day and validated as real CSV. See `backend/docs/pipeline/cli.md` for history loading and all options.
+Never commit `.env` or paste the key anywhere. Details: `backend/docs/pipeline/archive-and-updates.md`.
 
 ## API
 
-All endpoints are `GET`. Area is `region=<id>` or `west,south,east,north` (longitude first); period is `date_from` / `date_to` in `YYYY-MM-DD` (UTC).
+All endpoints are `GET`. The website uses `/api/meta/`, `/api/calendar/`, `/api/month/`, `/api/monthly/`,
+`/api/hotspots/` and `/api/export/` (`region`, `year`, `month`), in exactly the shapes of `fire-calendar/types/api.ts`.
+The general endpoints take `region=<id>` or `west,south,east,north` (longitude first) and `date_from` / `date_to`
+in `YYYY-MM-DD` (UTC).
 
 | Endpoint | Returns |
 |---|---|
 | `/health` | liveness check |
-| `/status` | what is loaded, index state |
-| `/regions` | ready-made regions (world, ukraine, central_africa, amazon, siberia, australia, california) |
+| `/status` | what is stored, archive import, NASA update state |
+| `/regions` | ready-made regions (world, ukraine, argentina, california, amazonas, central_africa, siberia, australia) |
 | `/calendar` | daily active cells for MODIS and VIIRS, levels 0–4, shared cells |
 | `/calendar/monthly` | monthly aggregation with completeness |
 | `/cells` | GeoJSON map layer of active cells |
 | `/points` | individual detections, paged (max 7 days) |
 | `/harmonization` | merged MODIS/VIIRS series with train/holdout validation |
 | `/anomaly` | a month vs. the median of other years (needs ≥ 3 complete other years) |
-| `/export.csv` | detections as CSV (max 31 days, 200 000 rows) |
+| `/export.csv` | detections as CSV (max 31 days, 1 000 000 rows) |
 
 Example:
 
@@ -225,11 +234,14 @@ Errors always have the form `{"error": "..."}` with status 400, 422, 503 or 500.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `FIRMS_MAP_KEY` | none | NASA key, only for downloading |
-| `FIRMS_DB_PATH` | `data_pipeline/var/fires.sqlite3` | pipeline database location |
-| `FIRESYNC_INDEX_PATH` | `cache/grid_index.sqlite3` | fast index location |
-| `FIRESYNC_AUTO_REFRESH` | `60` | seconds between checks for new data (`0` disables) |
-| `FRONTEND_URLS` | `http://localhost:3000` | comma-separated CORS origins |
+| `FIRMS_MAP_KEY` | none | NASA key (in `data_pipeline/.env`), only for the automatic updates |
+| `FIRESYNC_DB_PATH` | `data/firesync.sqlite3` | the database |
+| `FIRESYNC_AUTO_UPDATE` | `1` | `0` turns the background NASA updates off |
+| `FIRESYNC_UPDATE_HOURS` | `3` | hours between update runs |
+| `FRONTEND_URLS` | `http://localhost:3000,http://127.0.0.1:3000` | comma-separated CORS origins |
+
+All update limits (requests per run, quota reserve, response size, database size, free disk) are listed in
+`backend/docs/operations/configuration.md`.
 
 Regions and request limits live in `backend/config.py`.
 
@@ -237,7 +249,7 @@ Regions and request limits live in `backend/config.py`.
 
 ```bash
 cd backend
-python -m pytest                                   # API tests, no key or real DB needed
+python -m pytest                                   # 44 tests, no key, no network, no real database
 
 cd data_pipeline
 python -m unittest discover -s tests -v            # pipeline tests
@@ -257,15 +269,16 @@ Method write-ups live next to the pipeline: `GRID_METHOD.md`, `CALIBRATION_METHO
 
 ## Deployment
 
-Target: Ubuntu 24.04, 2 GB RAM, 20+ GB disk. `backend/deploy/` has a systemd unit (2 uvicorn workers behind nginx), an nginx config, and a cron job (`update.sh`, every 3 hours) that downloads recent NRT data and refreshes only the changed days of the index. Step-by-step instructions: `backend/docs/operations/deployment.md`.
+Target: Ubuntu 24.04, 2 GB RAM, 20+ GB disk. `backend/deploy/` has a systemd unit (one uvicorn worker behind nginx; it also runs the NASA updates), an nginx config, and an optional cron job for updates. Copy `data/firesync.sqlite3` to the server instead of importing the 50 GB CSV there. Step-by-step instructions: `backend/docs/operations/deployment.md`.
 
 ## Limitations
 
 - Counts are **thermal detections on a 0.1° grid**, not fires and not burned area; there is no mask for industrial heat sources.
-- The harmonization factor is experimental, fitted per request, and validated on one region and one month. It is not a NASA standard.
-- Fully loaded data currently covers August 2024; `/anomaly` returns `insufficient_history` until more history is loaded.
+- The harmonization factor is experimental: it is fitted per region on the first two thirds of the paired days (MODIS + NOAA-20, 2018 onwards) and checked on the last third. It fills MODIS gaps only when it beats both benchmarks on the held-out days. It is not a NASA standard.
+- The archive export contains almost no offshore detections (NASA `type` 3); data from the API includes them (about 0.3 % of MODIS detections).
+- VIIRS S-NPP and NOAA-21 are not stored: the VIIRS series is NOAA-20 only.
 - Regions are rectangles, not administrative borders, and cannot cross the antimeridian.
-- The frontend currently calls `/api/...` routes (`lib/api.ts`) that differ from the FastAPI endpoints above and still falls back to mock data. Wiring it to the real API is open work.
+- The website's yearly total sums the months it receives, so the current, incomplete year looks low.
 
 ## Next milestones
 

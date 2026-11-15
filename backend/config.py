@@ -18,52 +18,73 @@ _PIPELINE_DIR = str(BASE_DIR / "data_pipeline")
 if _PIPELINE_DIR not in sys.path:
     sys.path.insert(0, _PIPELINE_DIR)
 
-from fires_data import load_settings  # noqa: E402  (import after the path setup)
+# ---------- Data ----------
 
-# ---------- Databases ----------
+DATA_DIR = BASE_DIR / "data"
 
-# The partner's database (fire points from NASA). We take the path THE SAME WAY as its loader does:
-#   1) the FIRMS_DB_PATH environment variable,
-#   2) otherwise the data_pipeline/.env file,
-#   3) otherwise data_pipeline/var/fires.sqlite3.
-# That way the API and the loader always look at the same file.
-DB_PATH = load_settings().db_path
+# The FireSync database: the whole MODIS + VIIRS NOAA-20 archive and every NASA update.
+# Created by importer.py, kept up to date by updater.py, read by the API.
+STORE_PATH = Path(os.environ.get("FIRESYNC_DB_PATH", DATA_DIR / "firesync.sqlite3"))
 
-# Our fast calendar index (created and updated automatically, not committed to git)
-INDEX_PATH = Path(os.environ.get("FIRESYNC_INDEX_PATH", BASE_DIR / "cache" / "grid_index.sqlite3"))
+# The NASA FIRMS archive export (2000–2025) that importer.py reads by default.
+ARCHIVE_CSV = Path(os.environ.get("FIRESYNC_ARCHIVE_CSV", DATA_DIR / "raw" / "NASA_FIRMS_2000_2025.csv"))
 
-# How often the API checks whether new data has appeared (seconds). 0 — do not check.
-AUTO_REFRESH_SECONDS = int(os.environ.get("FIRESYNC_AUTO_REFRESH", "60"))
+# ---------- Automatic NASA updates (updater.py) ----------
+# The API key is read from data_pipeline/.env (FIRMS_MAP_KEY), as before.
 
-# Default data scope of the partner: the whole world
-SCOPE_ID = "world"
+def _number(name, default, low, high, kind=float):
+    """A setting from the environment; an invalid value falls back to the default."""
+    try:
+        value = kind(os.environ.get(name, default))
+    except ValueError:
+        return default
+    return value if low <= value <= high else default
+
+
+AUTO_UPDATE = os.environ.get("FIRESYNC_AUTO_UPDATE", "1") not in ("0", "false", "no")
+UPDATE_EVERY_HOURS = _number("FIRESYNC_UPDATE_HOURS", 3, 0.25, 168)
+# One NASA request = one day of one sensor for the whole world.
+UPDATE_MAX_REQUESTS = _number("FIRESYNC_UPDATE_MAX_REQUESTS", 120, 1, 2000, int)
+# How far back an update may reach when there is no stored data at all (no full-history downloads).
+UPDATE_MAX_BACKFILL_DAYS = _number("FIRESYNC_UPDATE_MAX_BACKFILL_DAYS", 400, 1, 4000, int)
+UPDATE_REQUEST_INTERVAL = _number("FIRESYNC_UPDATE_INTERVAL_SECONDS", 1.0, 0, 60)
+UPDATE_QUOTA_RESERVE = _number("FIRESYNC_QUOTA_RESERVE", 100, 0, 5000, int)
+UPDATE_MAX_RESPONSE_MB = _number("FIRESYNC_MAX_RESPONSE_MB", 200, 1, 2048, int)
+UPDATE_MAX_DB_GB = _number("FIRESYNC_MAX_DB_GB", 20, 0.1, 4096)
+UPDATE_MIN_FREE_GB = _number("FIRESYNC_MIN_FREE_GB", 2, 0, 4096)
+# Near-real-time days younger than this are downloaded again: NASA keeps adding passes to them.
+UPDATE_REFRESH_RECENT_DAYS = _number("FIRESYNC_REFRESH_RECENT_DAYS", 2, 0, 31, int)
 
 # ---------- Frontend ----------
 
-# Website addresses allowed to call the API (CORS). On the server:
+# Addresses of the site that are allowed to call the API (CORS). On a server:
 #   FRONTEND_URLS=https://firesync.example.com
-FRONTEND_URLS = [u.strip() for u in os.environ.get("FRONTEND_URLS", "http://localhost:3000").split(",")
-                 if u.strip()]
+FRONTEND_URLS = [u.strip() for u in os.environ.get(
+    "FRONTEND_URLS", "http://localhost:3000,http://127.0.0.1:3000").split(",") if u.strip()]
 
-# ---------- Ready-made regions for the demo ----------
+# ---------- Ready-made regions ----------
 # bbox = [west, south, east, north] — longitude first, then latitude.
-# scope — which of the partner's data scopes to search. If the partner loads
-# history separately for a region (--scope-id ukraine), change "world" to "ukraine" here.
+# The first five match the regions of the fire-calendar frontend (lib/mock.ts),
+# so the calendar counts exactly the rectangle the map draws.
+# A changed bbox is picked up automatically: the region tables are rebuilt on the next start.
 REGIONS = {
-    "world":          {"name": "Весь мир",                  "bbox": None,                      "scope": "world"},
-    "ukraine":        {"name": "Украина (прямоугольник)",   "bbox": [22.0, 44.0, 41.0, 53.0],  "scope": "world"},
-    "central_africa": {"name": "Центральная Африка",        "bbox": [12.0, -18.0, 35.0, 0.0],  "scope": "world"},
-    "amazon":         {"name": "Амазония",                  "bbox": [-70.0, -15.0, -45.0, 0.0], "scope": "world"},
-    "siberia":        {"name": "Сибирь и Якутия",           "bbox": [90.0, 50.0, 140.0, 70.0], "scope": "world"},
-    "australia":      {"name": "Австралия",                 "bbox": [112.0, -44.0, 154.0, -10.0], "scope": "world"},
-    "california":     {"name": "Калифорния",                "bbox": [-124.5, 32.5, -114.0, 42.0], "scope": "world"},
+    "world":          {"name": "World",               "bbox": None},
+    "ukraine":        {"name": "Ukraine",             "bbox": [22.1, 44.3, 40.2, 52.4]},
+    "argentina":      {"name": "Argentina",           "bbox": [-73.6, -55.1, -53.6, -21.8]},
+    "california":     {"name": "California, USA",     "bbox": [-124.4, 32.5, -114.1, 42.0]},
+    "amazonas":       {"name": "Amazonas, Brazil",    "bbox": [-73.8, -9.8, -56.1, 2.2]},
+    "central_africa": {"name": "Central Africa",      "bbox": [12.0, -18.0, 35.0, 0.0]},
+    "siberia":        {"name": "Siberia and Yakutia", "bbox": [90.0, 50.0, 140.0, 70.0]},
+    "australia":      {"name": "Australia",           "bbox": [112.0, -44.0, 154.0, -10.0]},
 }
 
 # ---------- Limits (protect the server from overly heavy requests) ----------
-MAX_CALENDAR_DAYS = 3660      # daily calendar: up to 10 years per request
-MAX_REFERENCE_DAYS = 366      # the partner's reference calculation is slow: up to 1 year
+MAX_CALENDAR_DAYS = 3660      # daily calendar of a ready-made region: up to 10 years per request
+MAX_CUSTOM_AREA_DAYS = 366    # own west/south/east/north rectangle: computed from detections, up to 1 year
 MAX_POINT_DAYS = 7            # individual points for the map: up to a week
 MAX_POINTS_PER_PAGE = 5000
 MAX_EXPORT_DAYS = 31          # CSV: up to a month
-MAX_EXPORT_ROWS = 200_000
+MAX_EXPORT_ROWS = 1_000_000   # CSV rows (streamed, so memory stays small)
 MAX_MAP_CELLS = 20_000        # cells in the /cells response
+MAX_MAP_DAYS = 92             # /cells reads every day's detections: up to a quarter
+MAX_HOTSPOTS = 10_000         # cell-days in /api/hotspots/ (the map draws each one)

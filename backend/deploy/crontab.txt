@@ -1,6 +1,7 @@
-# Data update schedule (cron). Install as the firesync user:
-#   crontab deploy/crontab.txt
-# Check:  crontab -l        Log:  tail -f /srv/FireSync/backend/cache/update.log
+# Optional: NASA updates from cron instead of the API's background thread.
+# Use it together with FIRESYNC_AUTO_UPDATE=0 in the service file.
+# Install as the firesync user:   crontab deploy/crontab.txt
+# Check:  crontab -l        Log:  tail -f /srv/FireSync/backend/data/update.log
 
-# Every 3 hours (at minute 17): fresh NASA data + index refresh
-17 */3 * * * /srv/FireSync/backend/deploy/update.sh >> /srv/FireSync/backend/cache/update.log 2>&1
+# Every 3 hours (at minute 17)
+17 */3 * * * /srv/FireSync/backend/deploy/update.sh >> /srv/FireSync/backend/data/update.log 2>&1

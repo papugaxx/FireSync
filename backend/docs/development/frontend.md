@@ -3,10 +3,10 @@
 The website lives in `fire-calendar/` (repository root, next to `backend/`). It is a Next.js application for the
 NASA Space Apps Challenge 2026: a harmonized MODIS + VIIRS burning-activity calendar.
 
-!!! warning "Integration status"
-    The frontend is currently written against a **different API contract** from the one the FastAPI backend
-    serves. It runs on built-in mock data until a backend address is configured. See
-    [Connecting the backend](#connecting-the-backend) for the exact differences and a suggested mapping.
+!!! note "Integration status"
+    The backend serves exactly the `/api/...` addresses and shapes that `lib/api.ts` and `types/api.ts` expect
+    (`frontend_api.py`). The frontend runs on built-in mock data until `NEXT_PUBLIC_API_URL` is set; after that
+    every number comes from the database. See [Connecting the backend](#connecting-the-backend).
 
 ## Stack
 
@@ -86,42 +86,24 @@ short simulated delay. Once it is set, requests go to that address and the compo
 
 ```text
 # fire-calendar/.env.local
-NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 ```
 
 Restart `npm run dev` after changing it. Remember to add the frontend's address to the backend's `FRONTEND_URLS`
 (default `http://localhost:3000`), otherwise the browser blocks the requests with a CORS error.
 
-### The contract mismatch
+### What the backend answers
 
-The frontend's `lib/api.ts` and `types/api.ts` were written for a Django-style API. Their own comments mention
-Django and an `API.md` that is not in the repository. The backend that was actually built is FastAPI with
-different paths and shapes:
+| Frontend calls | Answer |
+|---|---|
+| `GET /api/meta/` | All regions of `config.REGIONS` (bbox in the frontend's `[south, west, north, east]` order) and the years that have data. The Explorer still uses `REGIONS`/`YEARS` from `mock.ts`; the five ids there exist in the backend with the same rectangles. |
+| `GET /api/calendar/?region=` | `years[].months[12]`: active cell-days per **complete** month on the MODIS scale (`null` = missing or incomplete), `median[12]` (needs 3 complete years, else `null`), and `harmonization` with the real fitted `k`, `r2`, fit and holdout periods. |
+| `GET /api/month/?region&year&month` | `days[]` of `{date, modis, viirs, harmonized}`: observed active cells per sensor (VIIRS = NOAA-20, unscaled) and the MODIS-scale value. `null` = no data, `0` = observed, no fire. |
+| `GET /api/monthly/?region&year` | `months[]` of `{month, modis, viirs, areaKm2, frpMean, frpMax}` for complete months. `viirs` is NOAA-20 × `k` (MODIS scale), `viirs_raw` the observed value; `areaKm2` is the area of the distinct MODIS cells (latitude-corrected, not burned area). |
+| `GET /api/hotspots/?region&year&month` | One point per active 0.1° cell and day with the real date, `seenBy` (`MODIS`, `VIIRS` or `BOTH`) and `frp` (strongest detection, MW). Up to 10 000; above that the strongest cells of every day are kept and `truncated`/`total` say so. |
+| `GET /api/export/?region&year&month` | A CSV of the individual detections (optional `day`, `sensor`). |
 
-| Frontend calls | Backend equivalent | Notes |
-|---|---|---|
-| `GET /api/meta/` | [`/regions`](../api/endpoints.md#get-regions) and [`/status`](../api/endpoints.md#get-status) | Explorer does not call `meta()`; it uses `REGIONS` and `YEARS` from `mock.ts`. |
-| `GET /api/calendar/?region=` | [`/calendar/monthly`](../api/endpoints.md#get-calendarmonthly) (+ [`/anomaly`](../api/endpoints.md#get-anomaly) for the median) | Frontend expects `years[].months[12]`, a `median[12]` and a `harmonization` block. |
-| `GET /api/month/?region&year&month` | [`/calendar`](../api/endpoints.md#get-calendar) with that month's `date_from`/`date_to`, and [`/harmonization`](../api/endpoints.md#get-harmonization) for the merged series | Frontend expects `days[]` of `{date, modis, viirs, harmonized}`. |
-| `GET /api/monthly/?region&year` | [`/calendar/monthly`](../api/endpoints.md#get-calendarmonthly) for that year | Frontend expects `months[]` of `{month, modis, viirs}`. |
-| `GET /api/hotspots/?region&year&month` | [`/cells`](../api/endpoints.md#get-cells) for a month, or [`/points`](../api/endpoints.md#get-points) (maximum 7 days) | See the notes below. |
-| `GET /api/export/?region&year&month` | [`/export.csv`](../api/endpoints.md#get-exportcsv) | A month fits in the 31-day limit. `exportUrl` exists but the Explorer currently builds the CSV client-side. |
-
-Differences to handle in an adapter layer inside `lib/api.ts`:
-
-- **Paths.** The backend has no `/api` prefix and no trailing slashes.
-- **Region ids and bbox order.** Frontend `Region.bbox` is `[south, west, north, east]`; the backend uses
-  `[west, south, east, north]`. Regions should be loaded from `/regions` instead of `mock.ts`.
-- **Months to dates.** The frontend passes `year` and `month`; the backend takes `date_from` and `date_to`.
-- **Hotspots.** `/points` is limited to 7 days and `seenBy: "BOTH"` cannot be derived for a single detection
-  (see [Data model](../pipeline/data-model.md#reading-from-python)). For a whole month the practical source is the
-  `/cells` layer, whose properties carry MODIS and VIIRS counts per cell.
-- **`null` semantics.** Both sides use `null` for "not loaded" and `0` for "loaded, nothing detected". Keep that
-  distinction in charts so missing months do not look like quiet months.
-- **Years.** The UI offers a fixed range (the year calendar is titled "2001–2025"), while the loaded data covers
-  far less. Derive the available years from `/status` or the `coverage` fields.
-
-Matching the frontend types to the backend's JSON shapes (or the reverse) is the main remaining integration task.
+Extra fields (coverage, units, products, raw values) are added next to the expected ones; the frontend ignores them.
 
 ## Styling
 
@@ -139,5 +121,7 @@ There are no finished styles yet, only layout and placeholder frames. Where to c
   not use (the map uses plain Leaflet). It looks like a stray install and can probably be removed.
 - `fire-calendar/README.md` mentions copying `.env.example`, but no such file is in the tree. Create `.env.local`
   by hand as shown above.
+- The Explorer's yearly total sums the months it receives; incomplete months come as `null` and count as 0 there,
+  so the current year's total looks low until the year is complete.
 - The base map tiles come from Esri's ArcGIS tile service (`server.arcgisonline.com`); check its terms of use before
   a public launch.

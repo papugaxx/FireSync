@@ -12,6 +12,7 @@ Examples use `http://localhost:8000`. Responses are shortened with `...`.
 
 | Endpoint | Purpose |
 |---|---|
+| [`/api/...`](#frontend-endpoints) | What the fire-calendar website calls |
 | [`/health`](#get-health) | Is the server alive? |
 | [`/status`](#get-status) | What data is loaded, and is the index ready? |
 | [`/regions`](#get-regions) | Ready-made regions |
@@ -37,32 +38,29 @@ Liveness check. Does not touch the databases.
 
 ## GET /status
 
-Reports what is loaded and whether the fast index is ready. Use it to decide whether to show a "data is being
-prepared" message.
+What is stored and what the automatic NASA update is doing.
 
 ```json
 {
   "status": "ok",
   "data": {
-    "world": {
-      "modis": {"first_day": "2000-11-01", "last_day": "2026-11-12", "loaded_days": 133,
-                "observations": 1272209, "last_fetched_at": "..."},
-      "viirs": {"first_day": "2024-08-01", "last_day": "2026-11-12", "loaded_days": 32, "...": "..."}
-    }
+    "modis": {"first_day": "2000-11-01", "last_day": "2025-12-31", "days": 9166, "nrt_days": 0,
+              "observations": 111424408, "api_days": 0},
+    "viirs": {"first_day": "2018-04-01", "last_day": "2025-12-31", "days": 2826, "nrt_days": 0,
+              "observations": 155932146, "api_days": 0}
   },
-  "index": {"ready": true, "last_refresh": "2026-11-14T10:17:04Z", "cell_rows": 1000000,
-            "size_mb": 64.0,
-            "auto_refresh": {"enabled": true, "last_error": null, "last_result": null}},
-  "partner_database": {"found": true, "size_gb": 2.88},
-  "version": "1.0.0"
+  "database": {"revision": 3, "size_mb": 2851.2, "archive": {"status": "completed", "...": "..."}},
+  "update": {"state": "idle", "message": "Up to date with NASA FIRMS.", "api_key_configured": true,
+             "last_completed_run": {"requests": 61, "days_written": 60, "stopped_because": null, "...": "..."}},
+  "version": "2.0.0"
 }
 ```
 
-- `status` is `"building_index"` while the index is not ready; `data` is then empty.
-- `first_day` and `last_day` are the extremes, **not** a guarantee that every day in between is loaded.
-  Use `loaded_days` or the `coverage` block of `/calendar`.
-- `index.auto_refresh.last_error` shows the most recent background-refresh failure, if any.
-- The database file path is deliberately not exposed.
+- `status` is `"no_database"` until `data/firesync.sqlite3` exists (run `python importer.py`).
+- `first_day` and `last_day` are the extremes, **not** a guarantee that every day in between is stored.
+  Use `days` or the `coverage` block of `/calendar`. Missing days inside the archive are instrument outages.
+- `nrt_days` are days stored as near-real-time data; they are replaced by final (SP) data when NASA publishes it.
+- The NASA key and the database file path are never exposed.
 
 ## GET /regions
 
@@ -70,8 +68,8 @@ Ready-made regions for demos. Defined in `config.REGIONS`.
 
 ```json
 [
-  {"id": "world",   "name": "Весь мир",                "bbox": null,                       "scope": "world"},
-  {"id": "ukraine", "name": "Украина (прямоугольник)", "bbox": [22.0, 44.0, 41.0, 53.0],  "scope": "world"}
+  {"id": "world",   "name": "World",   "bbox": null},
+  {"id": "ukraine", "name": "Ukraine", "bbox": [22.1, 44.3, 40.2, 52.4]}
 ]
 ```
 
@@ -317,3 +315,19 @@ curl -OJ "http://localhost:8000/export.csv?date_from=2024-08-15&date_to=2024-08-
 - The file name looks like `firesync_ukraine_2024-08-15_2024-08-15.csv` (`area` when no region is used).
 - `X-Total-Rows` gives the row count. If more than 200 000 rows match, the request fails with `400` and asks you
   to narrow the area or period.
+
+
+## Frontend endpoints { #frontend-endpoints }
+
+The fire-calendar website calls `/api/...` (see [Frontend](../development/frontend.md) for every field). All take
+`region` (an id from `/regions`), and where needed `year` and `month`:
+
+| Endpoint | Answer |
+|---|---|
+| `GET /api/meta/` | regions (bbox `[south, west, north, east]`) and years with data |
+| `GET /api/calendar/?region=` | year × month active cell-days on the MODIS scale, monthly medians, harmonization `k` and `r2` |
+| `GET /api/month/?region&year&month` | per day: MODIS and NOAA-20 active cells, harmonized value, products |
+| `GET /api/monthly/?region&year` | per month: MODIS and scaled NOAA-20 cell-days, area of distinct cells, FRP mean and max |
+| `GET /api/hotspots/?region&year&month[&day][&sensor][&limit]` | active 0.1° cells per day with `seenBy` and FRP |
+| `GET /api/export/?region&year&month[&day][&sensor]` | CSV of the individual detections |
+| `GET /api/updates/` | stored data and the state of the automatic NASA update |

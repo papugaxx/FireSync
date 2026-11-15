@@ -38,41 +38,42 @@ The virtual environment must live at `backend/venv`: both `update.sh` and the sy
 
 ## 3. Copy the database { #copy-the-database }
 
-The database (~3 GB) is not in git. Copy it from the machine that holds it, and verify it with a checksum.
+The database (~3 GB) is not in git. Copy it from the machine that holds it (much faster than importing the
+50 GB CSV again), and verify it with a checksum.
 
 On the source machine:
 
 ```bash
-scp path/to/backend/data_pipeline/var/fires.sqlite3 YOUR_LOGIN@SERVER:/tmp/
-shasum -a 256 path/to/backend/data_pipeline/var/fires.sqlite3      # Linux: sha256sum
+scp path/to/backend/data/firesync.sqlite3 YOUR_LOGIN@SERVER:/tmp/
+shasum -a 256 path/to/backend/data/firesync.sqlite3      # Linux: sha256sum
 ```
 
 On the server:
 
 ```bash
-sudo mv /tmp/fires.sqlite3 /srv/FireSync/backend/data_pipeline/var/
-sudo chown firesync /srv/FireSync/backend/data_pipeline/var/fires.sqlite3
-sha256sum /srv/FireSync/backend/data_pipeline/var/fires.sqlite3
+sudo mkdir -p /srv/FireSync/backend/data
+sudo mv /tmp/firesync.sqlite3 /srv/FireSync/backend/data/
+sudo chown -R firesync /srv/FireSync/backend/data
+sha256sum /srv/FireSync/backend/data/firesync.sqlite3
 ```
 
 The two checksums must match. On Windows, `Get-FileHash -Algorithm SHA256 <file>` gives the same value.
 
 !!! warning "Copy a consistent snapshot"
-    Do not copy the file while a loader is writing to it. Stop the loader, or produce a snapshot with SQLite's
-    backup (`VACUUM INTO`) first.
+    Do not copy the file while the API is running (its updater may be writing). Stop the API, or produce a
+    snapshot with SQLite's backup (`VACUUM INTO`) first.
 
-## 4. NASA key and first index
+## 4. NASA key
 
 Still as `firesync`:
 
 ```bash
 cd /srv/FireSync/backend
 echo "FIRMS_MAP_KEY=your_key" > data_pipeline/.env
-python -m fires_data init
-python grid_index.py                                     # builds the index, about a minute
-chmod +x deploy/update.sh && crontab deploy/crontab.txt  # scheduled updates, see below
 exit
 ```
+
+The API downloads new NASA days by itself (see [Scheduled updates](#scheduled-updates)).
 
 ## 5. The API as a service { #api-service }
 
@@ -86,13 +87,13 @@ sudo systemctl daemon-reload && sudo systemctl enable --now firesync-api
 
 What the unit does:
 
-- Runs `uvicorn main:app` on `127.0.0.1:8000` with **2 workers** and `--proxy-headers`, as the `firesync` user.
+- Runs `uvicorn main:app` on `127.0.0.1:8000` with **1 worker** and `--proxy-headers`, as the `firesync` user.
 - Restarts automatically (`Restart=always`) and starts at boot.
 - Listens only on localhost; nginx is the public entry point.
 
-!!! info "Two workers and the background refresh"
-    Each worker runs its own auto-refresh thread. They cannot refresh at the same time because refreshes take a
-    file lock (`cache/grid_index.lock`), so extra workers cost nothing but a lock attempt.
+!!! info "Workers and the background update"
+    Every worker starts its own updater thread. Two updates never run at once — they take a file lock
+    (`data/firesync.sqlite3.update.lock`) — so more workers are safe, but one is enough: answers are cached.
 
 ## 6. nginx and HTTPS
 
@@ -108,7 +109,7 @@ sudo certbot --nginx -d api.YOUR-DOMAIN
 The nginx config forwards to the API with the original `Host`, `X-Forwarded-For` and `X-Forwarded-Proto`
 headers. Two settings matter:
 
-- `proxy_read_timeout 120s`: the slow `engine=reference` calculation can take around 30 seconds.
+- `proxy_read_timeout 120s`: a large CSV export of a whole month can take a while.
 - `proxy_buffering off`: the CSV export is streamed, so it must not be buffered.
 
 ## 7. Verify
@@ -122,42 +123,22 @@ curl https://api.YOUR-DOMAIN/status
 
 ## Scheduled updates { #scheduled-updates }
 
-`deploy/crontab.txt` runs `deploy/update.sh` every three hours (at minute 17) and appends to
-`cache/update.log`:
+The API itself downloads new NASA days in the background (`updater.py`): about a minute after start and then every
+`FIRESYNC_UPDATE_HOURS` hours (3). It stores SP where NASA has it and NRT otherwise, replaces NRT with SP later,
+and re-downloads only the last two NRT days. Details: [Archive import and NASA updates](../pipeline/archive-and-updates.md).
 
-```text
-17 */3 * * * /srv/FireSync/backend/deploy/update.sh >> /srv/FireSync/backend/cache/update.log 2>&1
-```
-
-Each run does two steps:
-
-1. **Download.** `fires_data sync --area world --recent-days 3 --include-today --sources MODIS_NRT VIIRS_NOAA20_NRT`
-   with a request budget (`MAX_REQUESTS`, default 30) and a disk reserve (`MIN_FREE_GB`, default 5).
-2. **Index.** `python grid_index.py` recomputes only the days that changed, which takes seconds.
-
-Safety features:
-
-- `flock` on `LOCK_FILE` means an update that finds another one running logs a message and exits successfully.
-- The script exits with an error **only** if the download step fails (code 1). A paused download (code 2: request
-  budget reached) is normal and continues on the next run.
-- The API's own auto-refresh also notices the new data within `FIRESYNC_AUTO_REFRESH` seconds, so the website
-  updates without a restart.
-
-The scheduled job downloads **only NRT** data for MODIS and VIIRS NOAA-20, for the last three days. Standard
-processing (SP) data for older days has to be loaded manually with `sync`; see
-[Command line](../pipeline/cli.md#loading-history).
+If you prefer cron, set `FIRESYNC_AUTO_UPDATE=0` in the service file and install `deploy/crontab.txt`, which runs
+`deploy/update.sh` (`python updater.py`) every three hours.
 
 ## Day-to-day operations
 
 | Task | Command |
 |---|---|
 | API logs | `journalctl -u firesync-api -f` |
-| Update log | `tail -f /srv/FireSync/backend/cache/update.log` |
+| Update state | `curl http://127.0.0.1:8000/api/updates/` or `python updater.py --status` |
 | Restart the API | `sudo systemctl restart firesync-api` |
 | Service status | `sudo systemctl status firesync-api` |
-| Check the cron entry | `sudo -u firesync crontab -l` |
-| Rebuild the index from scratch | stop the API, delete `cache/grid_index.sqlite3`, run `python grid_index.py` |
-| Data status | `cd data_pipeline && python -m fires_data status` |
+| One update now | `cd /srv/FireSync/backend && venv/bin/python updater.py` |
 
 ## Deploying a code update
 
@@ -170,5 +151,5 @@ exit
 sudo systemctl restart firesync-api
 ```
 
-If `INDEX_VERSION` in `grid_index.py` changed, the index rebuilds itself on the next start (about a minute during
-which data endpoints return `503`).
+If `config.REGIONS` changed, the region tables are rebuilt in the background after the restart (a few minutes);
+until then the previous numbers are served.
