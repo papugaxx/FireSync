@@ -48,7 +48,7 @@ Open the landing page at `/` and go to **Explore** (`/explore`). The screen has 
 - Tick or untick **MODIS** and **VIIRS** to choose which sensor's detections appear on the map.
 - Drag the **Fire Radiative Power** slider to keep only hotspots within a chosen FRP range in MW. The right end, "500+ MW", means no upper limit.
 - Hover a map point to see its date, sensor (MODIS, VIIRS or both) and FRP.
-- Pan by dragging and zoom with the **+ / −** buttons at the bottom right. The mouse wheel does not zoom the map, so the page can scroll normally.
+- Pan by dragging and zoom with the **mouse wheel or the + / −** buttons at the bottom right.
 
 ### 3. Keep the evidence
 
