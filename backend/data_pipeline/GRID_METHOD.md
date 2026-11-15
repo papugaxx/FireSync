@@ -1,55 +1,55 @@
-# Расчёт активных клеток: первый сравнительный показатель
+# Calculating active cells: the first comparative indicator
 
-## Что считаем
+## What we count
 
-За каждый UTC-день берём валидные записи из загруженного среза NASA. При наличии
-обоих вариантов одного семейства предпочтение отдаётся SP, иначе используется NRT.
-Один успешный API-срез не доказывает полное наблюдение территории спутником.
+For each UTC day we take the valid records from the loaded NASA slice. When both variants
+of one family exist, SP is preferred, otherwise NRT is used.
+One successful API slice does not prove full observation of the territory by the satellite.
 
-Фиксированный состав первого сравнения:
+The fixed composition of the first comparison:
 
-- MODIS: Terra и Aqua; клетки объединяются, одинаковая клетка не считается дважды.
-- VIIRS: только NOAA-20. S-NPP и NOAA-21 в этот ряд не добавляются.
+- MODIS: Terra and Aqua; the cells are merged, and the same cell is not counted twice.
+- VIIRS: NOAA-20 only. S-NPP and NOAA-21 are not added to this series.
 
-Сетка общая для всего мира: EPSG:4326, шаг 0.1°, начало в (-180°, -90°).
-Она не сдвигается при выборе области. Координаты перед определением индекса клетки
-округляются до 0.0000001°. Границы внутри сетки относятся к клетке справа/сверху;
-крайние +180°/+90° относятся к последним клеткам. Прямоугольник выбора фильтрует
-исходные точки до агрегации и включает свои границы.
+The grid is common for the whole world: EPSG:4326, step 0.1°, origin at (-180°, -90°).
+It does not shift when an area is chosen. Before the cell index is determined, the coordinates
+are rounded to 0.0000001°. Borders inside the grid belong to the cell to the right/above;
+the extreme +180°/+90° belong to the last cells. The selection rectangle filters
+the raw points before aggregation and includes its own borders.
 
-Клетка активна, если за сутки в ней есть хотя бы одна выбранная запись.
-Все валидные confidence/type сохраняются в расчёте: отдельная маска промышленных
-источников не применяется. Поэтому это показатель тепловых обнаружений, не только
-лесных пожаров.
+A cell is active if there is at least one selected record in it during the day.
+All valid confidence/type values are kept in the calculation: a separate mask of industrial
+sources is not applied. So this is an indicator of thermal detections, not only of
+forest fires.
 
-## Единицы и пропуски
+## Units and gaps
 
-Дневное значение — число активных клеток. Сумма по дням — ячейко-дни.
-Одна клетка с обнаружениями в 20 днях даёт 20 ячейко-дней. Это не число отдельных
-пожаров и не площадь выгорания. Площадь географических клеток меняется с широтой.
+The daily value is the number of active cells. The sum over days is cell-days.
+One cell with detections on 20 days gives 20 cell-days. This is not the number of separate
+fires and not a burned area. The area of geographic cells changes with latitude.
 
-Если срез не загружен, значение `null`. Загруженный пустой срез даёт 0 обнаружений;
-это не доказательство отсутствия огня. Итог по источнику становится `null`, если
-не загружен хотя бы один запрошенный день.
+If a slice is not loaded, the value is `null`. A loaded empty slice gives 0 detections;
+this is not proof of the absence of fire. The total for a source becomes `null` if
+at least one requested day is not loaded.
 
-Клетка «оба» означает присутствие обоих выбранных наборов в одной клетке и сутках.
-Одновременное наблюдение одного физического пожара этим не установлено.
+A "both" cell means the presence of both selected sets in the same cell and day.
+This does not establish a simultaneous observation of one physical fire.
 
-## Что этот этап не рассчитывает
+## What this stage does not calculate
 
-Сетка не устраняет разную чувствительность приборов. Отдельный эксперимент масштабной поправки и проверки на отложенных датах
-описан в CALIBRATION_METHOD.md. Историческая медиана, аномалии и подтверждение
-переносимости на другие периоды остаются следующими этапами. `harmonized: false`; значение R² пока отсутствует.
+The grid does not remove the different sensitivity of the instruments. A separate experiment with a scale correction and a check on held-out dates
+is described in CALIBRATION_METHOD.md. The historical median, anomalies and confirmation of
+transferability to other periods remain for the next stages. `harmonized: false`; the R² value is absent for now.
 
-Результат читается из одного снимка базы. Входные загруженные окна и параметры
-нужно сохранять вместе с отчётом для воспроизводимости.
+The result is read from one database snapshot. The loaded input windows and parameters
+must be saved together with the report for reproducibility.
 
-## Первичные источники
+## Primary sources
 
 - [NASA FIRMS Important Notes](https://firms.modaps.eosdis.nasa.gov/alerts/notes.php):
-  ограничения обнаружения и различия MODIS/VIIRS.
+  detection limitations and MODIS/VIIRS differences.
 - [NASA MODIS Active Fire product](https://modaps.modaps.eosdis.nasa.gov/services/about/products/c61-nrt/MCD14DL-NRT.html):
-  значение точки обнаружения и тепловые аномалии.
+  the meaning of a detection point and thermal anomalies.
 
-Сетка 0.1° и фиксированный состав сравнения — прозрачный выбор нашего прототипа,
-а не объявленный NASA стандарт гармонизации.
+The 0.1° grid and the fixed composition of the comparison are a transparent choice of our prototype,
+not a harmonization standard announced by NASA.

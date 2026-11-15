@@ -1,25 +1,25 @@
-# Саше: код и настоящая база данных
+# For Sasha: the code and the real database
 
-В архиве одна папка data_pipeline: модуль данных, SQLite-база var/fires.sqlite3, функции чтения для FastAPI, расчёт календаря и отдельный эксперимент поправки. Маршруты FastAPI и JSON-контракт фронтенда подключаешь в своём backend.
+The archive holds one folder, data_pipeline: the data module, the SQLite database var/fires.sqlite3, the reading functions for FastAPI, the calendar calculation and a separate correction experiment. You connect the FastAPI routes and the frontend JSON contract in your backend.
 
-## Быстрое подключение
+## Quick connection
 
-1. Распаковать data_pipeline рядом с backend.
-2. В Python-окружении backend (Python 3.11+) из корня проекта выполнить:
+1. Unpack data_pipeline next to the backend.
+2. In the backend's Python environment (Python 3.11+), from the project root run:
 
 ```bash
 python -m pip install -e ./data_pipeline
 ```
 
-3. Задать один абсолютный FIRMS_DB_PATH на распакованный var/fires.sqlite3 для backend и worker. Можно скопировать .env.example в .env внутри data_pipeline и указать этот путь. Переменная окружения имеет приоритет над .env. Без явного пути используется var/fires.sqlite3 рядом с самим пакетом, а не текущей папкой запуска.
-4. Перед запуском backend и обновлений выполнить (подставить свой абсолютный путь):
+3. Set one absolute FIRMS_DB_PATH pointing to the unpacked var/fires.sqlite3 for the backend and the worker. You can copy .env.example to .env inside data_pipeline and put this path there. An environment variable takes priority over .env. Without an explicit path, var/fires.sqlite3 next to the package itself is used, not the current working folder.
+4. Before starting the backend and the updates, run (substitute your own absolute path):
 
 ```bash
-python -m fires_data --db /полный/путь/data_pipeline/var/fires.sqlite3 init
+python -m fires_data --db /full/path/data_pipeline/var/fires.sqlite3 init
 ```
 
-Команда сохраняет существующие наблюдения и включает WAL. Папка базы должна быть доступна для записи файлов -wal/-shm.
-5. Чтение готовой базы не требует ключа NASA. Пример:
+The command keeps the existing observations and turns on WAL. The database folder must be writable for the -wal/-shm files.
+5. Reading a ready database does not need a NASA key. Example:
 
 ```python
 from datetime import date
@@ -32,24 +32,24 @@ points = store.observations(
 )
 ```
 
-Поля записи: latitude, longitude, observed_at (UTC), sensor, satellite, frp_mw, confidence_raw, source_code и другие. observations выдаёт страницы, по умолчанию до1000записей. Использовать Store: он выбирает SP вместо NRT. Не суммировать обе версии напрямую и не складывать пересекающиеся scope.
+Record fields: latitude, longitude, observed_at (UTC), sensor, satellite, frp_mw, confidence_raw, source_code and others. observations returns pages, by default up to 1000 records. Use Store: it selects SP instead of NRT. Do not add both versions directly and do not add overlapping scopes.
 
-Scope — world. ID региона фронтенда не равен scope_id. Для региона передать bbox=(west,south,east,north). Прямоугольник вокруг Украины не равен точной границе страны.
+The scope is world. The frontend's region ID is not equal to scope_id. For a region, pass bbox=(west,south,east,north). A rectangle around Ukraine is not equal to the exact border of the country.
 
-## Что загружено
+## What is loaded
 
-4 893 436 исходных наблюдений. По всему миру полностью загружен август 2024 для MODIS и VIIRS NOAA-20. Также есть ранний отрезок MODIS и отдельные проверочные дни. Это не вся мировая история. Покрытие и SHA256 копии — в DATABASE_INFO.json; крайние даты не означают полностью загруженный промежуток.
+4 893 436 raw observations. August 2024 is fully loaded for the whole world for MODIS and VIIRS NOAA-20. There is also an early segment of MODIS and some separate check days. This is not the whole world history. The coverage and the SHA256 of the copy are in DATABASE_INFO.json; the extreme dates do not mean a fully loaded interval.
 
-## Календарь и эксперимент
+## Calendar and experiment
 
-grid_calendar(store,scope_id,start,end,bbox=...) даёт дневные ряды двух приборов на сетке0.1°. Примеры JSON в examples. Единицы — активные клетки за день и ячейко-дни за период; это не отдельные пожары/площадь выгорания. Незагруженные значения — null.
+grid_calendar(store,scope_id,start,end,bbox=...) gives the daily series of the two instruments on the 0.1° grid. JSON examples are in examples. The units are active cells per day and cell-days per period; these are not separate fires or burned area. Values that are not loaded are null.
 
-Месяц по миру считался28секунд. Использовать готовые JSON либо фоновую задачу с проверкой версий входных данных. Thread pool не делает расчёт мгновенным.
+A month for the world took 28 seconds. Use the ready JSON or a background task that checks the versions of the input data. A thread pool does not make the calculation instant.
 
-calibrate_calendar — отдельный ограниченный эксперимент: train1–21Aug/test22–31Aug, bbox22,44,41,53. Поправка не применяется автоматически глобально. Дневная динамика на проверке объясняется слабо. Условия в CALIBRATION_METHOD.md, результаты в examples/calibration-ukraine-bbox-2024-08.md.
+calibrate_calendar is a separate limited experiment: train 1–21 Aug / test 22–31 Aug, bbox 22,44,41,53. The correction is not applied automatically globally. The daily dynamics are explained weakly on the check. The conditions are in CALIBRATION_METHOD.md, the results in examples/calibration-ukraine-bbox-2024-08.md.
 
-## Новые данные NASA
+## New NASA data
 
-Приватный .env и MAP_KEY не включены. Собственный MAP_KEY нужен только для availability/sync. Команды загрузки с сохранением прогресса есть в README.md. Один ingestion worker; расписание обновлений и догрузка по HTTP ещё не подключены.
+The private .env and MAP_KEY are not included. Your own MAP_KEY is needed only for availability/sync. The loading commands with saved progress are in README.md. One ingestion worker; the update schedule and fetching what is missing over HTTP are not connected yet.
 
-База — согласованный снимок SQLite VACUUM INTO. Исходная база не менялась. Код прошёл52проверки. Коммитов/pushне делали.
+The database is a consistent SQLite VACUUM INTO snapshot. The source database was not changed. The code passed 52 checks. No commits/pushes were made.

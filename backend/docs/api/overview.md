@@ -42,18 +42,18 @@ Rules:
 - Order is **longitude first, then latitude**: `west` and `east` are longitudes (-180 to 180); `south` and
   `north` are latitudes (-90 to 90). Be careful: some frontend types use `[south, west, north, east]`.
 - `west < east` and `south < north`. Crossing the antimeridian in one box is not supported.
-- The rectangle must lie inside the loaded data scope.
+- A custom rectangle is computed from the stored detections, so its period is limited to 366 days.
 - The rectangle is expanded outward to whole 0.1° cells. Responses return both `requested_bbox` and the
   `bbox` that was actually computed. See [Grid and calendar](../concepts/grid-and-calendar.md#regions-are-whole-cells).
 
-Every response that takes an area includes an `area` object:
+Every response that takes an area includes an `area` object. `requested_bbox` is `null` for a ready-made region and
+holds your own rectangle otherwise:
 
 ```json
 {
   "region": "ukraine",
-  "scope_id": "world",
-  "requested_bbox": [22.0, 44.0, 41.0, 53.0],
-  "bbox": [22.0, 44.0, 41.0, 53.0]
+  "requested_bbox": null,
+  "bbox": [22.1, 44.3, 40.2, 52.4]
 }
 ```
 
@@ -69,13 +69,13 @@ Errors always use one JSON shape:
 |---|---|---|
 | `400` | The request is well-formed but violates a rule | `date_to` before `date_from`; unknown `region`; period too long; only some of the four boundaries |
 | `422` | A parameter is malformed or out of range | Not a date; `west=500` |
-| `503` | The service cannot answer yet | Index still building (also sends `Retry-After: 30`); database file missing |
+| `503` | The service cannot answer yet | Database not created yet (also sends `Retry-After: 60`); database file not available |
 | `500` | Unexpected pipeline failure | |
 
 `422` responses add a `details` array of `{"param", "message"}` objects so a form can highlight the faulty field.
 
 !!! note "Language of messages"
-    The `error` text is currently written in Russian. Rely on the HTTP status for program logic and show
+    The `error` text is written in English and may be reworded. Rely on the HTTP status for program logic and show
     `error` to the user, rather than matching on its text.
 
 ## Response conventions
@@ -94,13 +94,13 @@ Errors always use one JSON shape:
 | `X-Process-Time-Ms` | all responses | Server processing time in milliseconds |
 | `X-Total-Rows` | `/export.csv` | Number of rows in the file |
 | `Content-Disposition` | `/export.csv` | Suggested file name |
-| `Retry-After` | `503` while the index builds | Seconds to wait before retrying |
+| `Retry-After` | `503` when the database does not exist yet | Seconds to wait before retrying (60) |
 
 These headers are exposed to browsers through CORS, so frontend code can read them.
 
 ## CORS
 
-Only `GET` requests from the origins listed in `FRONTEND_URLS` are allowed (default `http://localhost:3000`).
+Only `GET` requests from the origins listed in `FRONTEND_URLS` are allowed (default `http://localhost:3000,http://127.0.0.1:3000`).
 If the browser reports a CORS error, add the frontend's address to that variable. See
 [Configuration](../operations/configuration.md#environment-variables).
 
@@ -123,6 +123,6 @@ Limits protect the server from heavy requests. They live in `config.py`.
 | `/export.csv` | 31 days | At most 1 000 000 rows (streamed) |
 | `/api/hotspots/` | one month | At most 10 000 cell-days; strongest per day kept, `truncated` and `total` |
 | `/api/export/` | one month or one day | At most 1 000 000 rows |
-| `/anomaly` | n/a (uses a year and month) | Needs at least 3 other complete years |
+| `/anomaly` | n/a (uses a year and month) | Ready-made region only; needs at least 3 complete earlier years |
 
 Exceeding a limit returns `400` with a message that states the maximum.

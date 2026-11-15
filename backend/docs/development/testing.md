@@ -1,6 +1,6 @@
 # Testing
 
-There are two independent test suites: one for the backend API and one for the data pipeline. Neither needs a
+There are two independent test suites: one for the backend API (45 tests) and one for the data pipeline (52 tests). Neither needs a
 NASA key, a network connection or the real database.
 
 ## Backend (API) tests
@@ -16,11 +16,8 @@ deprecation warnings.
 
 ### How the test database is built
 
-`tests/conftest.py` builds a small **synthetic pipeline database in a temporary folder**. It does this with the
-pipeline's own code (`parse_observations` and `Store.replace_batch`) fed with CSV in the format NASA sends, so the
-test data goes through the same path as real data. The real database is never touched.
+`tests/conftest.py` builds a small **synthetic database in a temporary folder**. The real database is never touched.
 
-The synthetic data covers all of August 2024 with two clusters: one inside the Ukraine rectangle and one in
 The tests generate a small archive CSV in exactly the format of `NASA_FIRMS_2000_2025.csv` — with the rows of each
 year shuffled, like the real export — import it with `importer.py` into a temporary database and test the real
 app on it. A few special days exercise edge cases:
@@ -68,3 +65,13 @@ def test_level_zero_is_no_fires(app_env):
 
 If you need different source data, extend `make_archive` in `conftest.py`. Note that adding rows changes counts
 that existing tests assert.
+
+## Data pipeline tests
+
+The partner's package has its own tests in `data_pipeline/tests/` (analytics, calibration, CLI configuration, the
+service, storage and parsing, and bounding-box queries). Run them from `backend/data_pipeline/`:
+
+```bash
+cd data_pipeline
+python -m unittest discover -s tests -v
+```

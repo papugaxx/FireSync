@@ -1,6 +1,9 @@
 # Harmonization
 
 VIIRS detects smaller and cooler fires than MODIS, so on the same day it reports many more active cells.
+For August 2024 worldwide, MODIS (Terra + Aqua) reported about 0.77 million detections and VIIRS (NOAA-20) about
+3.53 million. That gap comes from the observing system (resolution of about 1 km for MODIS and 375 m for VIIRS,
+sensitivity and overpass timing), not from more fire on the ground.
 The two series cannot be compared directly. Harmonization estimates how to express VIIRS in "MODIS units"
 and, just as importantly, **checks honestly whether that works**.
 
@@ -93,15 +96,16 @@ gets the average right and does **not** explain day-to-day variation well on thi
 
 ## Anomalies
 
-`/anomaly` compares one month with the same calendar month in other years, using a chosen series.
+`/anomaly` compares one month with the same calendar month in earlier years, using a chosen series.
 
 - Only months with `complete` data are used, so partial months are never compared.
-- It needs at least **3** other years with complete data (`MIN_HISTORY_YEARS`). Otherwise the status is
+- It needs at least **3** earlier years with complete data (`MIN_HISTORY_YEARS`). Otherwise the status is
   `insufficient_history`.
-- The "normal" is the **median** of those other years.
+- The "normal" is the **median** of those earlier years.
 - `anomaly_percent = (value - median) / median × 100`.
 - Verdict: `above_normal` at +25% or more, `below_normal` at -25% or less, otherwise `normal`.
-- `rank` is the position of the month among all available years (1 = most active).
+- `rank` is the position of the month among the requested year and the earlier years (1 = most active).
 
-At the time of writing, only August 2024 is loaded in full for both series (the pipeline's `LIVE_STATUS.md`
-holds the latest snapshot), so `/anomaly` answers `insufficient_history` until more history is loaded. See [Command line](../pipeline/cli.md#loading-history) for loading history.
+With the 2000–2025 archive imported (MODIS from 2000, VIIRS NOAA-20 from 2018), `/anomaly` has enough history
+for most regions and months. If the database is incomplete it answers `insufficient_history`; see
+[Archive import and NASA updates](../pipeline/archive-and-updates.md).

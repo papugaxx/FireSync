@@ -60,6 +60,7 @@ See [Configuration](../operations/configuration.md#where-the-database-is-found) 
 | `--sources ...` | `auto` (default) or specific products, see below. |
 | `--refresh` | Re-download dates that are already loaded. |
 | `--refresh-recent-days N` | How many recent days are always re-downloaded (default 3). |
+| `--cached` | `plan` only: use the availability already saved in the database, without contacting NASA. |
 
 Use exactly one of `--from/--to`, `--recent-days`, or `--all-history`.
 
@@ -122,9 +123,10 @@ to three regions instead:
 python -m fires_data plan --bbox 22 44 41 53 --scope-id ukraine --all-history --sources MODIS_SP VIIRS_NOAA20_SP
 ```
 
-!!! warning "Region scopes and the API"
-    If you load history into a separate scope (such as `ukraine`), change that region's `"scope"` from `"world"`
-    to `"ukraine"` in `config.REGIONS`. The index picks up the new scope automatically. Scopes that overlap are
+!!! warning "The pipeline database and the API"
+    The FireSync API no longer reads this database (it uses `data/firesync.sqlite3`, see
+    [Archive import and NASA updates](archive-and-updates.md)), and a region has no `scope` setting in
+    `config.REGIONS`. Data loaded with `fires_data` is for the pipeline's own commands. Scopes that overlap are
     not added together, because that would count the same detection twice.
 
 ### Keeping data fresh
@@ -173,7 +175,7 @@ the full database; this is exactly the slowness that the API's index avoids.
 
 ## Methodology documents
 
-These Russian-language documents sit next to the code and are the authoritative method descriptions. Their
+These documents sit next to the code and are the authoritative method descriptions. Their
 content is summarized in [Grid and calendar](../concepts/grid-and-calendar.md) and
 [Harmonization](../concepts/harmonization.md).
 

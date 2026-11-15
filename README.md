@@ -16,7 +16,7 @@ FireSync addresses this by:
 
 1. Putting both records on **one fixed 0.1° WGS84 grid and UTC day**, so each occupied cell counts once per day.
 2. Always showing **which sensor** a number comes from and **whether the day was actually loaded**.
-3. Offering an **experimental, honestly validated** MODIS ↔ VIIRS scale factor, never applied automatically.
+3. Offering an **experimental, honestly validated** MODIS ↔ VIIRS scale factor, used to fill MODIS gaps only where it beat the benchmarks on held-out days.
 
 > Detected hotspots can include agricultural burning and other thermal sources. An *active cell* is not a number of fires and not a burned area.
 
@@ -53,7 +53,7 @@ Open the landing page at `/` and go to **Explore** (`/explore`). The screen has 
 ### 3. Keep the evidence
 
 - The **Charts** buttons open floating windows. You can drag them, open several at once, and close them with the **×** (or press the button again):
-  - **Monthly activity**: active fire cells per month for the chosen year. Toggle MODIS and VIIRS to compare them. VIIRS is shown on the MODIS scale, and VIIRS data starts in 2012.
+  - **Monthly activity**: active fire cells per month for the chosen year. Toggle MODIS and VIIRS to compare them. VIIRS is shown on the MODIS scale, and VIIRS NOAA-20 data starts in April 2018.
   - **Surface**: approximate area of 0.1° grid cells with active fire, in km² per month.
   - **FRP**: mean Fire Radiative Power per month (bars) and the strongest fire (dots).
   - **Trend & Anomaly**: a year × month heatmap. Switch between **Activity** and **Anomaly**, and read the yearly totals with a trend line underneath.
@@ -71,7 +71,7 @@ Open the landing page at `/` and go to **Explore** (`/explore`). The screen has 
 
 **Known-event check: Athens-area fire, 11–13 August 2024** (rectangle 23.5–24.2°E, 37.8–38.4°N)
 
-| UTC day | MODIS | VIIRS NOAA-20 |
+| UTC day | MODIS detections | VIIRS NOAA-20 detections |
 |---|---|---|
 | Aug 11 | 43 | 179 |
 | **Aug 12** | **131** | **256** |
@@ -136,7 +136,7 @@ NASA FIRMS API ──(updater.py, every 3 h in the background)──► data/fir
 | Database size | **≈ 3 GB** (about 11 bytes per detection) |
 | Archive import | ≈ 10 minutes, can be interrupted and resumed |
 | New NASA data | downloaded automatically in the background every 3 hours |
-| Tests | 44, with no key, no network and no real database |
+| Tests | 45 for the backend (52 more for the pipeline package), with no key, no network and no real database |
 
 All detections of one UTC day and sensor are stored as one compressed block, and per-region daily and monthly totals are precomputed, so the calendar answers in milliseconds.
 
@@ -272,30 +272,31 @@ NEXT_PUBLIC_API_URL=https://your-domain npm run build
 ```text
 fire-calendar/
 ├── app/
-│   ├── page.tsx              landing page (sections: hero, problem, how, features, team, cta)
+│   ├── page.tsx              landing page (sections: hero, problem, how, features, call to action)
 │   └── explore/page.tsx      the calendar page
 ├── components/
-│   ├── ui/index.tsx          basic elements: Section, Card, Button, Select, Stat, Placeholder
+│   ├── ui/                   index.tsx (Section, Card, Button, Select, Stat, Placeholder, ...), Checkbox, FloatingWindow, RangeSlider
 │   ├── layout/               Header, Footer
-│   └── explore/              Explorer (the page logic), YearCalendar, DayStrip,
-│                             MonthlyChart, FireMap, legends
+│   └── explore/              Explorer (the page logic), YearCalendar, DayCalendar, DayStrip,
+│                             ActivityChart, BarChart, MonthlyChart, FireMap, legends
 ├── lib/
 │   ├── api.ts                API requests / mocks, CSV export
 │   ├── useApi.ts             data-loading hook
 │   ├── mock.ts               test data
-│   └── colors.ts             color scales for the data (calendar, map)
+│   ├── colors.ts             color scales for the data (calendar, map)
+│   └── site.ts               site name and tagline
 └── types/api.ts              API response types
 ```
 
 #### Customizing the design
 
-There are currently no styles, only the layout and placeholder frames.
+The dark theme from the design is already in place; step 5 lists what is still missing.
 
 1. Colors and fonts: `app/globals.css`, in the `@theme` block.
 2. Buttons, cards and fields: `components/ui/index.tsx`, which every page uses.
 3. Header and footer: `components/layout/`.
 4. Data colors (heat scale, MODIS/VIIRS): `lib/colors.ts`.
-5. Places marked `TODO` in the code are waiting for content from the design (logo, hero image, team).
+5. Still waiting for content from the design: the hero image on the landing page (`app/page.tsx`) and the chart colors marked `TODO` in `components/explore/MonthlyChart.tsx`.
 
 ### NASA data
 
@@ -345,7 +346,7 @@ The regions the frontend uses (`world`, `ukraine`, `argentina`, `california`, `a
 | `/cells` | GeoJSON map layer of active cells (up to 92 days) |
 | `/points` | individual detections, paged (max 7 days) |
 | `/harmonization` | merged MODIS/VIIRS series with train/holdout validation |
-| `/anomaly` | a month vs. the median of **other** years (needs ≥ 3 complete other years) |
+| `/anomaly` | a month vs. the median of **earlier** years (needs ≥ 3 complete earlier years; ready-made region only) |
 | `/export.csv` | detections as CSV (max 31 days, 1 000 000 rows) |
 
 **Area**: `region=ukraine`, or `west,south,east,north` (longitude first), or nothing for the whole world. A custom rectangle is computed directly from the detections, so its period can be up to 366 days.
@@ -379,7 +380,7 @@ Regions and request limits live in `backend/config.py`.
 
 ```bash
 cd backend
-python -m pytest                                   # 44 tests, no key, no network, no real database
+python -m pytest                                   # 45 tests, no key, no network, no real database
 
 cd data_pipeline
 python -m unittest discover -s tests -v            # pipeline tests
@@ -433,7 +434,7 @@ Details: `backend/docs/operations/deployment.md`.
 - The archive export contains almost no offshore detections (NASA `type` 3); data from the API includes them (about 0.3 % of MODIS detections).
 - VIIRS S-NPP and NOAA-21 are not stored: the VIIRS series is NOAA-20 only.
 - Regions are rectangles, not administrative borders, and cannot cross the antimeridian.
-- The website's yearly total sums the months it receives, so the current, incomplete year looks low.
+- The website's yearly total and trend count only years whose 12 months are all complete, so the current year is left out until it ends.
 
 ## Designed for
 

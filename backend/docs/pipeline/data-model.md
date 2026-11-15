@@ -35,7 +35,7 @@ A named geographic extent that was requested from NASA (`world`, or a bounding b
 
 !!! warning "Scope is not region"
     A *scope* describes what was **downloaded**. A *region* in the API (`/regions`) describes what a user
-    **looks at** and is just a rectangle inside a scope. Today every region reads from the `world` scope.
+    **looks at** and is just a rectangle. The FireSync API no longer reads scopes: it uses its own database.
 
 ### `availability`
 
@@ -56,7 +56,7 @@ The date range NASA currently reports for each product (`min_date`, `max_date`) 
 | `request_url_redacted` | The request URL with the key removed |
 
 A `loaded` slice with `row_count = 0` is valid: it means NASA answered and returned no detections.
-The API's index uses `checksum` to notice when a slice has changed.
+`checksum` lets the pipeline notice when a downloaded slice has changed.
 
 ### `detections`
 
@@ -72,7 +72,7 @@ One row per detected hot spot. Each belongs to a `fetch_windows` row and is dele
 | `brightness_k` | Brightness temperature, in kelvin |
 | `confidence_raw` | Confidence as NASA gave it (a number for MODIS, a word for VIIRS) |
 | `daynight` | `D` or `N` |
-| `product_version`, `processing` | Version string and processing level of the row |
+| `product_version`, `processing` | Version string and processing level of the row (`SP`, `NRT`, `RT` or `URT`) |
 | `scan_km`, `track_km` | Pixel size in the scan and track directions, in kilometres |
 | `type_code` | Detection type code |
 | `raw_json` | The original record, kept for traceability |

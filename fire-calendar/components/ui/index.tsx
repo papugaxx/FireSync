@@ -28,9 +28,9 @@ export function Card({
 }: {
   title?: string;
   action?: React.ReactNode;
-  video?: string;   // путь к видео, например "/videos/collect.mp4"
-  img?: string;     // путь к картинке, например "/images/grid.png"
-  imgAlt?: string;  // описание картинки для доступности
+  video?: string;   // path to a video, for example "/videos/collect.mp4"
+  img?: string;     // path to an image, for example "/images/grid.png"
+  imgAlt?: string;  // image description for accessibility
   className?: string;
   children: React.ReactNode;
 }) {

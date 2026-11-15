@@ -1,65 +1,65 @@
-# Эксперимент согласования дневных индексов
+# Experiment on reconciling the daily indices
 
-## Цель
+## Goal
 
-Проверить простую масштабную поправку, которая приводит дневной индекс VIIRS
-NOAA-20 ближе к выбранному индексу MODIS Terra+Aqua на одной области и периоде.
-MODIS здесь — референс для сравнения, а не истинное число пожаров. Различия приборов
-не означают, что дополнительные обнаружения VIIRS ошибочны.
+To test a simple scale correction that brings the daily VIIRS NOAA-20 index closer to the
+chosen MODIS Terra+Aqua index for one area and period.
+MODIS here is a reference for comparison, not the true number of fires. The differences between the instruments
+do not mean that the additional VIIRS detections are errors.
 
-## Входные данные
+## Input data
 
-Результат `grid_calendar`: одна фиксированная сетка 0.1°, UTC-дни, неизменные
-платформы и фильтры. Используются только дни, где оба источника загружены.
-Настоящие нули сохраняются; пропущенные дни исключаются из пар, но отмечаются.
-В отчёте сохраняются профиль, bbox, даты и версии входных срезов.
+The result of `grid_calendar`: one fixed 0.1° grid, UTC days, unchanged
+platforms and filters. Only days where both sources are loaded are used.
+Real zeros are kept; missing days are excluded from the pairs but are marked.
+The report keeps the profile, bbox, dates and versions of the input slices.
 
-Первый запланированный опыт: bbox (22,44,41,53), 1–31 августа 2024.
-Это прямоугольная область вокруг Украины, а не административная граница.
+The first planned run: bbox (22,44,41,53), 1–31 August 2024.
+This is a rectangular area around Ukraine, not an administrative border.
 
-## Метод фиксируется до оценки
+## The method is fixed before evaluation
 
-Первые 21 день, 1–21 августа, используются для подбора коэффициента.
-Последние 10 дней, 22–31 августа, отложены для проверки и не участвуют в подборе.
-Граница задаётся параметром `--split 2024-08-22`.
+The first 21 days, 1–21 August, are used to fit the coefficient.
+The last 10 days, 22–31 August, are held out for checking and do not take part in the fit.
+The border is set by the parameter `--split 2024-08-22`.
 
-Обозначим x — дневной VIIRS-индекс, y — дневной MODIS-индекс.
-Кандидат: y_оценка = a × x, где a = max(0, сумма(x×y) / сумма(x²)).
-Свободный член равен нулю. Коэффициент считается только по тренировочным парам.
-Выход может быть дробным: это оценка индекса в шкале MODIS, не фактически
-обнаруженное число клеток и не значение для отдельных точек карты.
+Let x be the daily VIIRS index and y the daily MODIS index.
+The candidate: y_estimate = a × x, where a = max(0, sum(x×y) / sum(x²)).
+The intercept is zero. The coefficient is computed only on the training pairs.
+The output can be fractional: it is an estimate of the index on the MODIS scale, not the actually
+detected number of cells and not a value for separate map points.
 
-## Проверка
+## Checking
 
-На тренировочной и отдельно отложенной части считаются MAE, RMSE и среднее
-смещение (оценка минус MODIS). R² отсутствует, если вариация референса нулевая.
+On the training part and, separately, on the held-out part we compute MAE, RMSE and the mean
+bias (estimate minus MODIS). R² is absent if the variation of the reference is zero.
 
-Сравниваем три заранее выбранных варианта:
+We compare three variants chosen in advance:
 
-- Исходный VIIRS без масштабирования.
-- VIIRS с коэффициентом a.
-- Постоянное среднее MODIS, вычисленное только на тренировочных датах.
+- Raw VIIRS without scaling.
+- VIIRS with the coefficient a.
+- The constant mean of MODIS, computed only on the training dates.
 
-Поправка получает `improved_on_holdout`, только если её MAE на отложенных датах
-ниже обоих сравнительных вариантов с учётом числовой погрешности.
-Иначе — `not_improved`. Параметры не меняются после просмотра проверки.
+The correction gets `improved_on_holdout` only if its MAE on the held-out dates
+is lower than both comparison variants, allowing for numeric tolerance.
+Otherwise — `not_improved`. The parameters are not changed after looking at the check.
 
-При менее 14 тренировочных или 7 отложенных пар, отсутствии сигнала/изменчивости
-тренировочных рядов выдаётся `insufficient_data`. Эти минимумы — инженерные
-ограничители прототипа, а не гарантия статистической надёжности.
+With fewer than 14 training or 7 held-out pairs, or with no signal/variability
+in the training series, `insufficient_data` is returned. These minimums are engineering
+safeguards of the prototype, not a guarantee of statistical reliability.
 
-## Как использовать результат
+## How to use the result
 
-Результат всегда экспериментальный: `apply_automatically=false`.
-Он не заменяет исходные ряды и не применяется автоматически к другим территориям,
-спутникам или сезонам. Улучшение на 10 соседних днях одного августа не доказывает
-переносимость на другой месяц или год. Соседние дни могут быть зависимы.
-Историческая норма, аномалии и объединённый многолетний ряд здесь не строятся.
-Для следующей проверки потребуются другие периоды, не использованные в подборе.
+The result is always experimental: `apply_automatically=false`.
+It does not replace the source series and is not applied automatically to other territories,
+satellites or seasons. An improvement on 10 adjacent days of one August does not prove
+transferability to another month or year. Adjacent days may be dependent.
+A historical norm, anomalies and a combined multi-year series are not built here.
+The next check will need other periods that were not used in the fit.
 
-## Источники ограничений
+## Sources of the limitations
 
 [NASA FIRMS Important Notes](https://firms.modaps.eosdis.nasa.gov/alerts/notes.php)
-объясняет различия чувствительности, экспериментальность confidence MODIS и возможные
-пропуски обнаружений. Сам кандидат, деление 21/10 и критерий принятия — наш
-прозрачный эксперимент; это не опубликованный NASA стандарт гармонизации.
+explains the differences in sensitivity, the experimental nature of MODIS confidence and possible
+missed detections. The candidate itself, the 21/10 split and the acceptance criterion are our
+transparent experiment; this is not a harmonization standard published by NASA.
