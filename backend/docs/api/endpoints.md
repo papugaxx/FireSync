@@ -373,7 +373,7 @@ To add a border: set `"boundary": "country:<ISO3>"` or `"state:<ISO 3166-2>"` an
 The border a region is counted by, as a GeoJSON Feature (MultiPolygon). `detail` (degrees, default 0.02)
 simplifies it for drawing.
 
-## GET /api/detections/?region=&date=[&cell=][&sensor=] { #api-detections }
+## `GET /api/detections/?region=&date=[&cell=][&sensor=]` { #api-detections }
 
 Individual detections of one UTC day inside the region's border: real latitude/longitude, time, satellite,
 FRP, confidence, product (SP/NRT) and the number of the 0.1° `cell`. With `cell` (from `/api/hotspots/`)
