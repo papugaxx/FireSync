@@ -49,6 +49,7 @@ from pathlib import Path
 import numpy as np
 
 import config
+import geo
 
 FORMAT_VERSION = "1"
 SENSORS = ("MODIS", "VIIRS")                 # VIIRS means VIIRS on NOAA-20
@@ -367,15 +368,44 @@ def stored_day(conn, day, sensor):
 # Region tables
 # ---------------------------------------------------------------------------
 
+def region_area(region):
+    """
+    (cell range, border) of a configured region. The cell range is None for the whole world;
+    the border (geo.Shape) is None when the region is a plain rectangle.
+    With a border, the cell range is only the part of the grid the border can touch.
+    """
+    info = config.REGIONS[region]
+    if info["bbox"] is None:
+        return None, None
+    shape = geo.region_shape(region)
+    return (shape.cells, shape) if shape is not None else (cell_range(info["bbox"]), None)
+
+
 def region_cells():
     """{region id: cell range or None for the whole world} from config.REGIONS."""
-    return {key: None if info["bbox"] is None else cell_range(info["bbox"])
-            for key, info in config.REGIONS.items()}
+    return {key: region_area(key)[0] for key in config.REGIONS}
 
 
 def regions_signature():
-    text = json.dumps({k: v["bbox"] for k, v in config.REGIONS.items()}, sort_keys=True)
+    text = json.dumps({k: v["bbox"] for k, v in config.REGIONS.items()}, sort_keys=True) + geo.signature()
     return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+def summarize_area(data, cells=None, shape=None, whole=None):
+    """
+    Per-cell summary of one day's detections inside an area.
+    data: decoded columns lat, lon, frp. whole: the ready summary of all of them, if the caller has it.
+    A rectangle (or the world) is cut out by cell; a border is tested detection by detection,
+    so a cell on the border counts only the detections that are really inside.
+    """
+    if shape is not None:
+        inside = shape.contains(data["lat"], data["lon"])
+        return summarize_cells(data["lat"][inside], data["lon"][inside], data["frp"][inside])
+    whole = whole if whole is not None else summarize_cells(data["lat"], data["lon"], data["frp"])
+    if cells is None:
+        return whole
+    mask = in_cells(whole["cell"], cells)
+    return {k: v[mask] for k, v in whole.items()}
 
 
 def read_day(conn, day, sensor, names=("lat", "lon", "frp")):
@@ -398,7 +428,7 @@ def compute_month(path, month):
     Region rows for one month, computed from the stored blocks (no writing, so it can
     run in a worker process). Returns (region_days rows, region_months rows).
     """
-    regions = region_cells()
+    regions = {key: region_area(key) for key in config.REGIONS}
     day_rows, month_rows = [], []
     with closing(connect(path)) as conn:
         stored = {(r["day"], r["sensor"]): r["product"] for r in conn.execute(
@@ -411,11 +441,11 @@ def compute_month(path, month):
             present = {s: stored[(day, s)] for s in SENSORS if (day, s) in stored}
             if not present:
                 continue
-            summaries = {}
+            summaries, decoded = {}, {}
             for sensor in present:
-                data = read_day(conn, day, sensor)
+                data = decoded[sensor] = read_day(conn, day, sensor)
                 summaries[sensor] = summarize_cells(data["lat"], data["lon"], data["frp"])
-            for region, cells in regions.items():
+            for region, (cells, shape) in regions.items():
                 row = {"region": region, "day": day}
                 inside = {}
                 for sensor in SENSORS:
@@ -424,9 +454,9 @@ def compute_month(path, month):
                         row.update({f"{ch}_cells": None, f"{ch}_obs": None, f"{ch}_frp_n": None,
                                     f"{ch}_frp_sum": None, f"{ch}_frp_max": None, f"{ch}_product": None})
                         continue
-                    s = summaries[sensor]
-                    mask = in_cells(s["cell"], cells)
-                    inside[sensor] = s["cell"][mask]
+                    s = summarize_area(decoded[sensor], cells, shape, whole=summaries[sensor])
+                    mask = np.ones(len(s["cell"]), dtype=bool)
+                    inside[sensor] = s["cell"]
                     frp_max = int(s["frp_max"][mask].max()) if mask.any() else -1
                     frp_sum = int(s["frp_sum"][mask].sum())
                     row.update({f"{ch}_cells": int(mask.sum()), f"{ch}_obs": int(s["obs"][mask].sum()),
@@ -556,18 +586,48 @@ def day_cell_summary(conn, day, sensor):
     return result
 
 
-def detections(conn, day, sensor, cells=None):
+def area_cell_summary(conn, day, sensor, cells=None, shape=None, key=None):
     """
-    Detections of one day and sensor as plain values, optionally only inside a cell range.
+    Per-cell summary of one stored day inside an area (see summarize_area), or None if the day
+    is not stored. `key` names the border for the cache (the region id).
+    """
+    whole = day_cell_summary(conn, day, sensor)
+    if whole is None:
+        return None
+    if shape is None:
+        return summarize_area(None, cells, whole=whole)
+    cache_key = (revision(conn), str(day), sensor, "border", key or id(shape))
+    with _summaries_lock:
+        if cache_key in _summaries:
+            return _summaries[cache_key]
+    result = summarize_area(read_day(conn, day, sensor), cells, shape)
+    with _summaries_lock:
+        if len(_summaries) >= 96:
+            _summaries.pop(next(iter(_summaries)))
+        _summaries[cache_key] = result
+    return result
+
+
+def detections(conn, day, sensor, cells=None, shape=None, cell=None):
+    """
+    Detections of one day and sensor as plain values: optionally only inside a cell range,
+    inside a border (geo.Shape) and/or inside one 0.1° cell (its number).
     Sorted by time. Returns a list of dicts (empty if the day is not stored).
+    Every detection carries the number of its 0.1° cell (`cell`).
     """
     row = conn.execute("SELECT d.block FROM days JOIN day_data d ON d.id = days.id "
                        "WHERE days.day = ? AND days.sensor = ?", (str(day), sensor)).fetchone()
     if row is None:
         return []
     data, versions = decode_block(row[0])
-    mask = in_cells(cell_ids(data["lat"], data["lon"]), cells)
+    ids = cell_ids(data["lat"], data["lon"])
+    mask = in_cells(ids, cells)
+    if shape is not None:
+        mask &= shape.contains(data["lat"], data["lon"])
+    if cell is not None:
+        mask &= ids == int(cell)
     data = {k: v[mask] for k, v in data.items()}
+    ids = ids[mask]
     order = np.lexsort((data["lon"], data["lat"], data["time"]))
     day_text = str(day)
     out = []
@@ -587,6 +647,7 @@ def detections(conn, day, sensor, cells=None):
             "daynight": {1: "D", 2: "N"}.get(int(data["daynight"][i])),
             "type": None if data["type"][i] == 255 else int(data["type"][i]),
             "version": versions[data["version"][i]],
+            "cell": int(ids[i]),
         })
     return out
 

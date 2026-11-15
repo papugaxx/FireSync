@@ -208,9 +208,10 @@ def status():
     try:
         with _db() as conn:
             stored = store.summary(conn)
+            sync = updater.sync_state(conn)
     except store.StoreNotReady as exc:
         return {"status": "no_database", "message": str(exc), "update": updater.status(), "version": app.version}
-    return {"status": "ok", "data": stored["coverage"], "database": stored,
+    return {"status": "ok", "data": stored["coverage"], "database": stored, "sync": sync,
             "update": updater.status(), "version": app.version}
 
 
@@ -219,7 +220,8 @@ def status():
 @app.get("/regions", tags=["Regions"], summary="Ready-made regions")
 def regions():
     """The ready-made regions from `config.REGIONS`: id, name, bbox `[west, south, east, north]` (null = world)."""
-    return [{"id": key, "name": info["name"], "bbox": info["bbox"]} for key, info in config.REGIONS.items()]
+    return [{"id": key, "name": info["name"], "bbox": info["bbox"], "boundary": reports.boundary_info(key)}
+            for key, info in config.REGIONS.items()]
 
 
 # ---------- Calendar ----------

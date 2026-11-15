@@ -132,3 +132,21 @@ def client(app_env):
     from fastapi.testclient import TestClient
     with TestClient(app_env["main"].app) as test_client:
         yield test_client
+
+
+def border_rings(boundary_id):
+    """The rings of a border from geodata/boundaries.geojson."""
+    import json
+    data = json.loads((BACKEND / "geodata" / "boundaries.geojson").read_text())
+    feature = next(f for f in data["features"] if f["id"] == boundary_id)
+    return [ring for polygon in feature["geometry"]["coordinates"] for ring in polygon]
+
+
+def inside_border(rings, lat, lon):
+    """Plain even-odd ray casting, written independently of geo.py (slow, for small test sets)."""
+    inside = False
+    for ring in rings:
+        for (x0, y0), (x1, y1) in zip(ring, ring[1:] + ring[:1]):
+            if (y0 <= lat) != (y1 <= lat) and lon < x0 + (lat - y0) * (x1 - x0) / (y1 - y0):
+                inside = not inside
+    return inside

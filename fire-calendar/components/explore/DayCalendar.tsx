@@ -8,13 +8,31 @@ const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
  *  High   — turquoise (top third)
  *  Medium — blue
  *  Low    — dark
- * No fill — no fires; dimmed number — no data.
+ * No fill — data, but no fires (a measured zero).
+ * Days without a value say why (DAY_STATES): still downloading, not published by NASA yet, or no observations.
+ * A dot under the number: partial day (one sensor still to come, or NASA is still adding passes).
  */
 export const DAY_LEVELS = [
   { key: "high", label: "High activity", className: "bg-accent" },
   { key: "medium", label: "Medium activity", className: "bg-accent-2" },
   { key: "low", label: "Low activity", className: "bg-bg" },
 ] as const;
+
+/** How days WITHOUT a value are drawn: the reason matters (see DayStatus in types/api.ts). */
+export const DAY_STATES = [
+  { key: "pending", label: "Downloading", className: "border border-dashed border-accent text-muted" },
+  { key: "unavailable", label: "Not published by NASA yet", className: "text-muted/50 line-through" },
+  { key: "no_data", label: "No observations", className: "text-muted/40" },
+] as const;
+
+const STATUS_TEXT: Record<string, string> = {
+  pending: "NASA has this day; FireSync is still downloading it",
+  unavailable: "NASA has not published data for this day (yet)",
+  no_data: "no satellite observations",
+  not_imported: "the 2000–2025 archive has not been imported",
+  partial: "partial: one sensor still to come, or NASA is still adding satellite passes",
+  future: "this day has not happened yet",
+};
 
 export default function DayCalendar({
   days,
@@ -50,21 +68,30 @@ export default function DayCalendar({
       {days.map((d) => {
         const v = d.harmonized;
         const isSel = selected === d.date;
+        // a day with only VIIRS (no validated MODIS scale) has no harmonized value but can still be shown on the map
+        const hasData = v !== null || d.modis !== null || d.viirs !== null;
+        const empty = DAY_STATES.find((s) => s.key === (d.status === "not_imported" || d.status === "future" ? "no_data" : d.status));
+        const why = d.status ? STATUS_TEXT[d.status] : undefined;
         return (
           <button
             key={d.date}
             onClick={() => onSelect(isSel ? null : d.date)}
-            disabled={v === null}
-            className={`h-7 rounded-md 2xl:h-8 transition hover:brightness-125 disabled:cursor-not-allowed disabled:text-muted/40 ${levelClass(v)} ${
-              isSel ? "ring-2 ring-white ring-offset-2 ring-offset-surface" : ""
-            }`}
+            disabled={!hasData}
+            className={`relative h-7 rounded-md 2xl:h-8 transition hover:brightness-125 disabled:cursor-not-allowed ${
+              v !== null ? levelClass(v) : hasData ? "" : (empty?.className ?? "text-muted/40")
+            } ${isSel ? "ring-2 ring-white ring-offset-2 ring-offset-surface" : ""}`}
             title={
-              v === null
-                ? `${d.date}: no data`
-                : `${d.date}: ${v} active cells · MODIS ${d.modis ?? "—"} · VIIRS ${d.viirs ?? "—"}`
+              !hasData
+                ? `${d.date}: no data — ${why ?? "not loaded"}`
+                : `${d.date}: ${v === null ? "MODIS-scale value unavailable" : `${v} active cells`} · MODIS ${d.modis ?? "—"} · VIIRS ${d.viirs ?? "—"}` +
+                  (v === 0 ? " · no fires detected" : "") +
+                  (d.status === "partial" && why ? ` · ${why}` : "")
             }
           >
             {Number(d.date.slice(8))}
+            {d.status === "partial" && (
+              <span aria-hidden className="absolute bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-white/80" />
+            )}
           </button>
         );
       })}

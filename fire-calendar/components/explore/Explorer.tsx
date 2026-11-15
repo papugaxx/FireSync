@@ -4,12 +4,13 @@ import { useMemo, useState } from "react";
 import { api, downloadCsv } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 import { REGIONS, YEARS } from "@/lib/mock";
+import type { SyncResponse } from "@/types/api";
 import { Button, Field, Panel, Placeholder, Select, Toggle } from "@/components/ui";
 import FloatingWindow from "@/components/ui/FloatingWindow";
 import RangeSlider from "@/components/ui/RangeSlider";
 import Checkbox from "@/components/ui/Checkbox";
 import { SENSOR_COLORS } from "@/lib/colors";
-import DayCalendar, { DAY_LEVELS } from "./DayCalendar";
+import DayCalendar, { DAY_LEVELS, DAY_STATES } from "./DayCalendar";
 import ActivityChart from "./ActivityChart";
 import BarChart, { linearTrend } from "./BarChart";
 import YearCalendar from "./YearCalendar";
@@ -68,6 +69,8 @@ export default function Explorer() {
   const mon = useApi(monthKey, () => api.month(regionId, sel.year, sel.month));
   const hs = useApi(monthKey, () => api.hotspots(regionId, sel.year, sel.month));
   const yr = useApi(`${regionId}-${sel.year}`, () => api.monthly(regionId, sel.year));
+  // state of the NASA synchronisation (read once per page; the backend answers from its database)
+  const sync = useApi("sync", () => api.sync());
   const error = meta.error ?? cal.error ?? mon.error ?? hs.error ?? yr.error ?? null;
 
   // map points, filtered by day, sensors and FRP range
@@ -88,10 +91,24 @@ export default function Explorer() {
   }
 
   function exportCsv() {
+    // with a backend: the real NASA detections (own coordinates, time, satellite, FRP) of the region
+    const url = api.exportUrl(regionId, sel.year, sel.month, day, onlySensor);
+    if (url) {
+      window.location.assign(url);
+      return;
+    }
+    // demo: the map cells — named as cell centres, so nobody takes them for fire locations
     const tag = day ?? `${sel.year}-${String(sel.month).padStart(2, "0")}`;
     downloadCsv(
-      `${regionId}_${tag}_hotspots.csv`,
-      points.map((h) => ({ date: h.date, latitude: h.lat.toFixed(4), longitude: h.lon.toFixed(4), sensor: h.seenBy, frp_mw: h.frp })),
+      `${regionId}_${tag}_active_cells.csv`,
+      points.map((h) => ({
+        date: h.date,
+        cell_centre_latitude: h.lat.toFixed(2),
+        cell_centre_longitude: h.lon.toFixed(2),
+        cell_size_degrees: 0.1,
+        seen_by: h.seenBy,
+        max_frp_mw: h.frp,
+      })),
     );
   }
 
@@ -261,8 +278,17 @@ export default function Explorer() {
               </span>
             ))}
           </div>
+          <div className="mt-1.5 flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs text-muted">
+            {DAY_STATES.map((l) => (
+              <span key={l.key} className="inline-flex items-center gap-1.5">
+                <span className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm text-[9px] ${l.className}`}>7</span>
+                {l.label}
+              </span>
+            ))}
+          </div>
+          {sync.data && <SyncLine sync={sync.data} />}
           <p className="mt-2 text-sm">
-            {hs.data ? `${points.length.toLocaleString("en")} hotspots on the map` : "Loading hotspots…"}
+            {hs.data ? `${points.length.toLocaleString("en")} active 0.1° cells on the map` : "Loading hotspots…"}
             {hs.data?.truncated ? ` (strongest of ${hs.data.total?.toLocaleString("en")} active cell-days)` : ""}
             {day ? ` · ${day}` : " · whole month"}
           </p>
@@ -288,7 +314,7 @@ export default function Explorer() {
                   {k === "BOTH" ? "Both" : k}
                 </span>
               ))}
-              <span>· click a cell for details</span>
+              <span>· squares are 0.1° grid cells, not fire locations — click one for the real detections</span>
             </div>
           </div>
 
@@ -359,6 +385,22 @@ export default function Explorer() {
         );
       })}
     </section>
+  );
+}
+
+function SyncLine({ sync }: { sync: NonNullable<SyncResponse> }) {
+  const when = (t: string | null) => (t ? new Date(t).toLocaleString("en", { dateStyle: "medium", timeStyle: "short" }) : "never");
+  const text =
+    sync.status === "never_synced"
+      ? "NASA FIRMS: not synchronised yet"
+      : sync.status === "catching_up"
+        ? `NASA FIRMS: ${sync.pending_downloads.toLocaleString("en")} day downloads waiting · last sync ${when(sync.last_success_at)}`
+        : `NASA FIRMS: up to date · last sync ${when(sync.last_success_at)}`;
+  return (
+    <p className="mt-2 text-xs text-muted" title={sync.update?.message}>
+      {text}
+      {sync.last_error && <span className="text-red-300"> · last error: {sync.last_error.message}</span>}
+    </p>
   );
 }
 

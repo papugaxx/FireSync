@@ -67,6 +67,7 @@ def fresh(app_env, tmp_path, monkeypatch):
     monkeypatch.setattr(app_env["config"], "STORE_PATH", db)
     monkeypatch.setattr(app_env["config"], "UPDATE_REQUEST_INTERVAL", 0)
     monkeypatch.setattr(app_env["config"], "UPDATE_MIN_FREE_GB", 0)
+    monkeypatch.setattr(app_env["config"], "UPDATE_START_DATE", date(2024, 1, 1))   # the test world is 2024
     FakeFirms.instances, FakeFirms.empty_days, FakeFirms.broken_days = [], set(), set()
     FakeFirms.sp_until, FakeFirms.quota_left = date(2024, 9, 5), 5000
     updater, store = app_env["updater"], app_env["store"]
@@ -210,3 +211,115 @@ def test_new_region_in_config_gets_its_tables(fresh, app_env, monkeypatch):
     with closing(store.connect(db)) as conn:
         rows = store.region_day_rows(conn, "kyiv_area", "2024-08-01", "2024-08-31")
         assert len(rows) == 31 and store.get_meta(conn, "regions_signature") == store.regions_signature()
+
+
+# ---------------------------------------------------------------------------
+# The 2026 problems: the start date, the gap, duplicates, states
+# ---------------------------------------------------------------------------
+
+def test_without_archive_nothing_before_the_start_date_is_planned(fresh, app_env, tmp_path, monkeypatch):
+    """The old window (today − 400 days) re-planned archive years when the database had no archive."""
+    updater, store, _, _ = fresh
+    empty = tmp_path / "empty.sqlite3"
+    monkeypatch.setattr(app_env["config"], "STORE_PATH", empty)
+    monkeypatch.setattr(app_env["config"], "UPDATE_START_DATE", date(2024, 9, 1))
+    with closing(store.connect(empty, create=True)) as conn:
+        tasks = updater.plan(conn, FakeFirms("test-key-not-real").availability(), today=TODAY)
+    assert tasks and min(t["day"] for t in tasks) == "2024-09-01"
+    assert len(tasks) == 2 * 10                        # 2024-09-01 … 09-10, two sensors, nothing older
+
+
+def test_the_start_date_is_fixed_not_a_moving_window(fresh):
+    """A year later every missing day since the start is still planned (no code change for a new year)."""
+    updater, store, _, db = fresh
+    later = TODAY + timedelta(days=500)
+
+    class Later(FakeFirms):
+        def availability(self):
+            return {code: Availability(code, a.min_date, later) for code, a in super().availability().items()}
+    with closing(store.connect(db)) as conn:
+        tasks = updater.plan(conn, Later("test-key-not-real").availability(), today=later)
+    assert min(t["day"] for t in tasks if t["sensor"] == "MODIS") == "2024-09-03"
+    assert len({t["day"] for t in tasks if t["sensor"] == "MODIS"}) == (later - date(2024, 9, 3)).days + 1
+
+
+def test_a_gap_in_the_middle_is_filled(fresh):
+    """Stored newest days and stored first days do not hide the missing days between them."""
+    updater, store, run, db = fresh
+    run()
+    with closing(store.connect(db)) as conn, conn:
+        conn.execute("DELETE FROM day_data WHERE id IN (SELECT id FROM days WHERE day BETWEEN '2024-09-04' AND '2024-09-06')")
+        conn.execute("DELETE FROM days WHERE day BETWEEN '2024-09-04' AND '2024-09-06'")
+        tasks = updater.plan(conn, FakeFirms("test-key-not-real").availability(), today=TODAY)
+    gap = {(t["day"], t["sensor"]) for t in tasks if t["reason"] == "missing"}
+    assert gap == {(d, s) for d in ("2024-09-04", "2024-09-05", "2024-09-06") for s in ("MODIS", "VIIRS")}
+    run()
+    assert {"2024-09-04", "2024-09-05", "2024-09-06"} <= set(_days(store, db, "MODIS"))
+
+
+def test_repeated_runs_never_duplicate_detections(fresh):
+    updater, store, run, db = fresh
+    run()
+    with closing(store.connect(db)) as conn:
+        before = conn.execute("SELECT COUNT(*), SUM(observations) FROM days").fetchone()
+        region = conn.execute("SELECT SUM(modis_obs), SUM(viirs_obs) FROM region_days WHERE region = 'world'").fetchone()
+    for _ in range(3):                                # the recent NRT days are downloaded again every time
+        run()
+    FakeFirms.sp_until = date(2024, 9, 8)             # and NRT is replaced by SP
+    run()
+    with closing(store.connect(db)) as conn:
+        after = conn.execute("SELECT COUNT(*), SUM(observations) FROM days").fetchone()
+        again = conn.execute("SELECT SUM(modis_obs), SUM(viirs_obs) FROM region_days WHERE region = 'world'").fetchone()
+        doubles = conn.execute("SELECT COUNT(*) FROM (SELECT day, sensor FROM days GROUP BY 1, 2 HAVING COUNT(*) > 1)").fetchone()[0]
+    assert tuple(before) == tuple(after) and tuple(region) == tuple(again) and doubles == 0
+
+
+def test_network_failures_skip_days_and_the_run_is_retried_soon(fresh):
+    updater, store, run, db = fresh
+
+    class Flaky(FakeFirms):
+        def fetch_area(self, scope, source, start, end):
+            if start == date(2024, 9, 4) and source == "MODIS_SP":
+                raise NetworkError("timed out")
+            return super().fetch_area(scope, source, start, end)
+    result = updater.run_once(client_factory=Flaky, key="test-key-not-real", sleep=lambda s: None, today=TODAY)
+    assert result["skipped_days"] == 1 and result["remaining"] == 1 and result["error"] is None
+    assert "2024-09-05" in _days(store, db, "MODIS") and "2024-09-04" not in _days(store, db, "MODIS")
+
+    class Down(FakeFirms):
+        def fetch_area(self, scope, source, start, end):
+            raise NetworkError("down")
+    failed = updater.run_once(client_factory=Down, key="test-key-not-real", sleep=lambda s: None, today=TODAY)
+    assert failed["error"] == "NetworkError" and failed["remaining"] >= 1
+    with closing(store.connect(db)) as conn:
+        state = updater.sync_state(conn, today=TODAY)
+    assert state["last_error"] and "could not be reached" in state["last_error"]["message"]
+    assert state["last_success_at"] is not None       # from the first run
+
+
+def test_sync_state_tells_complete_partial_pending_and_unavailable(fresh):
+    updater, store, run, db = fresh
+
+    class Gap(FakeFirms):
+        """NASA's SP ends 2024-09-03 and its NRT starts 2024-09-06: 09-04 and 09-05 are not offered."""
+        def availability(self):
+            a = super().availability()
+            a["MODIS_SP"] = Availability("MODIS_SP", date(2000, 11, 1), date(2024, 9, 3))
+            a["MODIS_NRT"] = Availability("MODIS_NRT", date(2024, 9, 6), TODAY)
+            return a
+    updater.run_once(client_factory=Gap, key="test-key-not-real", sleep=lambda s: None, today=TODAY, max_requests=12)
+    with closing(store.connect(db)) as conn:
+        state = updater.sync_state(conn, today=TODAY)
+        days = updater.day_states(conn, date(2024, 9, 1), TODAY, today=TODAY)
+    modis = state["sensors"]["modis"]
+    assert modis["unavailable_ranges"] == [["2024-09-04", "2024-09-05"]]
+    assert state["status"] == "catching_up" and state["pending_downloads"] > 0
+    assert days["2024-09-02"]["modis"] == "final"                       # from the archive
+    assert days["2024-09-01"]["modis"] == "no_data"                     # inside the archive, no MODIS data
+    assert days["2024-09-10"]["modis"] == "updating"                    # NRT of today: NASA still adds passes
+    assert days["2024-09-10"]["status"] == "partial"
+    assert days["2024-09-04"]["modis"] == "unavailable"
+    assert {d["status"] for d in days.values()} >= {"complete", "partial"}
+    run()
+    with closing(store.connect(db)) as conn:
+        assert updater.sync_state(conn, today=TODAY)["status"] == "up_to_date"

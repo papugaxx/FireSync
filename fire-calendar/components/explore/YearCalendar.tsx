@@ -9,6 +9,15 @@ interface Props {
   onSelect: (year: number, month: number) => void;
 }
 
+const MONTH_STATUS: Record<string, string> = {
+  partial: "incomplete month (some days still missing)",
+  pending: "not downloaded yet",
+  future: "not yet",
+  unavailable: "not published by NASA yet",
+  no_data: "no data",
+  not_imported: "archive not imported",
+};
+
 // Main "burning calendar": rows = years, columns = months.
 export default function YearCalendar({ data, mode, selected, onSelect }: Props) {
   const max = Math.max(...data.years.flatMap((y) => y.months.map((v) => v ?? 0)));
@@ -46,7 +55,7 @@ export default function YearCalendar({ data, mode, selected, onSelect }: Props) 
                       style={{ background: bg }}
                       title={
                         v === null
-                          ? `${MONTHS[i]} ${y.year}: no data`
+                          ? `${MONTHS[i]} ${y.year}: ${MONTH_STATUS[y.status?.[i] ?? ""] ?? "no data"}`
                           : `${MONTHS[i]} ${y.year}: ${v} active cells${pct === null ? "" : ` (${pct >= 0 ? "+" : ""}${pct}% vs median)`}`
                       }
                       aria-label={`${MONTHS[i]} ${y.year}`}

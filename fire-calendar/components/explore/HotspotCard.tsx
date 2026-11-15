@@ -1,8 +1,9 @@
 "use client";
 // "Hotspot Telemetry" card: the individual NASA detections inside one clicked 0.1° map cell.
-// The map shows one point per cell and day (/api/hotspots/); this card asks the backend for the
-// real detections in that cell (/points) and lets the user page through them.
-import { useState } from "react";
+// The map shows one square per active cell and day (/api/hotspots/) — a grid cell, not a fire. This card
+// asks the backend for the real detections in that cell (/api/detections/, only those inside the
+// region's border), shows their own coordinates and hands them to the map, which marks them as dots.
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useApi } from "@/lib/useApi";
 import { SENSOR_COLORS } from "@/lib/colors";
@@ -11,17 +12,27 @@ import type { Detection, Hotspot } from "@/types/api";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 interface Props {
+  /** region id: in a region with a real border only the detections inside it are listed */
+  region: string;
   cell: Hotspot;
   /** only one sensor ticked in the panel → ask only for that sensor */
   sensor?: "MODIS" | "VIIRS";
   onClose: () => void;
+  /** the detections (real coordinates) and which one is shown, for the dots on the map */
+  onPoints?: (points: Detection[], current: number) => void;
 }
 
-export default function HotspotCard({ cell, sensor, onClose }: Props) {
-  const res = useApi(`${cell.id}-${sensor ?? "all"}`, () => api.cellPoints(cell.lat, cell.lon, cell.date, sensor));
+export default function HotspotCard({ region, cell, sensor, onClose, onPoints }: Props) {
+  const res = useApi(`${region}-${cell.id}-${sensor ?? "all"}`, () => api.cellPoints(region, cell, sensor));
   const [i, setI] = useState(0);
   const list = res.data?.points ?? [];
-  const d: Detection | undefined = list[Math.min(i, list.length - 1)];
+  const current = Math.min(i, list.length - 1);
+  const d: Detection | undefined = list[current];
+  useEffect(() => {
+    onPoints?.(list, current);
+    // list changes identity only when the data arrives
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res.data, current]);
 
   return (
     <div className="w-[min(380px,calc(100vw-2rem))] rounded-3xl border-2 border-accent bg-surface p-5 shadow-2xl shadow-black/60">
@@ -53,7 +64,7 @@ export default function HotspotCard({ cell, sensor, onClose }: Props) {
         <>
           {/* where and when */}
           <dl className="grid grid-cols-[1.3fr_1fr_0.8fr] divide-x divide-line text-sm">
-            <Item label="Coordinates">
+            <Item label="Detection at">
               {fmtLat(d.latitude)},<br />
               {fmtLon(d.longitude)}
             </Item>
@@ -99,7 +110,9 @@ export default function HotspotCard({ cell, sensor, onClose }: Props) {
             )}
           </div>
           <p className="mt-2 text-xs text-muted">
-            {list.length} detection{list.length === 1 ? "" : "s"} in this 0.1° cell on this day
+            {list.length} detection{list.length === 1 ? "" : "s"} in this 0.1° grid cell on this day
+            {d.product === "NRT" ? " · preliminary (NRT) data" : ""}
+            {cell.edge ? " · the border crosses this cell: only detections inside the region are counted" : ""}
           </p>
         </>
       )}

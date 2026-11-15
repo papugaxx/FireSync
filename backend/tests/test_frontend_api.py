@@ -13,6 +13,7 @@ def test_meta_has_frontend_regions_and_years(client):
     regions = {r["id"]: r for r in result["regions"]}
     assert set(FRONTEND_REGIONS) <= set(regions)
     assert regions["ukraine"]["bbox"] == [44.3, 22.1, 52.4, 40.2]            # [south, west, north, east]
+    assert regions["ukraine"]["boundary"]["kind"] == "border" and regions["world"]["boundary"]["kind"] == "world"
     assert all(len(r["bbox"]) == 4 and isinstance(r["name"], str) for r in regions.values())
     assert result["years"] == [2021, 2022, 2023, 2024]
     assert client.get("/api/meta").status_code == 200                       # with and without the slash
@@ -126,3 +127,68 @@ def test_updates_status_never_shows_the_key(client):
     assert result.status_code == 200
     assert "FIRMS_MAP_KEY=" not in result.text
     assert result.json()["stored"]["coverage"]["modis"]["days"] > 0
+
+
+def test_month_days_carry_a_state(client):
+    days = client.get("/api/month/?region=ukraine&year=2024&month=9").json()["days"]
+    by_date = {d["date"]: d for d in days}
+    assert by_date["2024-09-02"]["status"] == "complete"                # MODIS; VIIRS has no archive day (outage)
+    assert by_date["2024-09-02"]["viirs_state"] == "no_data" and by_date["2024-09-02"]["viirs"] is None
+    assert by_date["2024-09-02"]["modis_state"] == "final"
+    assert by_date["2024-09-20"]["status"] == "no_data"                  # archive years, nothing stored
+    assert by_date["2024-09-20"]["harmonized"] is None
+    aug = client.get("/api/month/?region=ukraine&year=2024&month=8").json()["days"]
+    quiet = next(d for d in aug if d["date"] == "2024-08-20")
+    assert quiet["status"] == "complete" and quiet["modis"] == 0         # a measured zero, not missing data
+
+
+def test_calendar_months_carry_a_state(client):
+    years = {y["year"]: y for y in client.get("/api/calendar/?region=ukraine").json()["years"]}
+    assert years[2024]["status"][7] == "complete" and years[2024]["status"][8] == "partial"
+    assert years[2024]["status"][0] == "no_data"
+
+
+def test_sync_endpoint(client):
+    body = client.get("/api/sync/?date_from=2024-08-30&date_to=2024-09-03").json()
+    assert body["status"] in ("never_synced", "catching_up", "up_to_date")
+    assert [d["date"] for d in body["daily"]] == ["2024-08-30", "2024-08-31", "2024-09-01", "2024-09-02", "2024-09-03"]
+    assert body["daily"][0]["status"] == "complete" and body["sensors"]["modis"]["archive_last_day"] == "2024-09-02"
+    assert "last_error" in body and "last_success_at" in body
+    assert client.get("/api/sync/?date_from=2024-09-03&date_to=2024-08-01").status_code == 400
+
+
+def test_boundary_is_the_real_border(client):
+    body = client.get("/api/boundary/?region=ukraine").json()
+    assert body["properties"]["kind"] == "border" and body["properties"]["id"] == "country:UKR"
+    assert len(body["geometry"]["coordinates"]) >= 1 and len(body["geometry"]["coordinates"][0][0]) > 50
+    rect = client.get("/api/boundary/?region=central_africa").json()
+    assert rect["properties"]["kind"] == "rectangle" and len(rect["geometry"]["coordinates"][0][0]) == 5
+
+
+def test_hotspots_are_cells_and_detections_are_real_points(client):
+    from conftest import border_rings, inside_border
+    body = client.get("/api/hotspots/?region=ukraine&year=2024&month=8").json()
+    spot = body["hotspots"][0]
+    assert spot["kind"] == "cell" and spot["cell_size_degrees"] == 0.1 and "cell centre" in body["unit"]
+    found = client.get(f"/api/detections/?region=ukraine&date={spot['date']}&cell={spot['cell']}").json()
+    assert found["count"] == spot["modis_observations"] + spot["viirs_observations"]
+    rings = border_rings("country:UKR")
+    for p in found["points"]:
+        assert p["cell"] == spot["cell"] and inside_border(rings, p["latitude"], p["longitude"])
+        assert abs(p["latitude"] - spot["lat"]) <= 0.05 and abs(p["longitude"] - spot["lon"]) <= 0.05
+    # every detection of a border region's day lies inside the border
+    day = client.get("/api/detections/?region=ukraine&date=2024-08-03&limit=5000").json()["points"]
+    assert day and all(inside_border(rings, p["latitude"], p["longitude"]) for p in day)
+    assert client.get("/api/detections/?region=ukraine").status_code == 400
+
+
+def test_map_calendar_and_statistics_agree_for_a_border_region(client):
+    month = {d["date"]: d for d in client.get("/api/month/?region=ukraine&year=2024&month=8").json()["days"]}
+    spots = client.get("/api/hotspots/?region=ukraine&year=2024&month=8&sensor=MODIS").json()["hotspots"]
+    per_day = {}
+    for s in spots:
+        per_day[s["date"]] = per_day.get(s["date"], 0) + 1
+    for d, item in month.items():
+        assert per_day.get(d, 0) == item["modis"], d                    # map cells = calendar cells
+    monthly = client.get("/api/monthly/?region=ukraine&year=2024").json()["months"][7]
+    assert monthly["modis"] == sum(item["modis"] for item in month.values())

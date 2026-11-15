@@ -14,7 +14,8 @@ code for deployment: every path and address below can be overridden from the env
 | `FIRESYNC_AUTO_UPDATE` | `1` | `0` turns the background NASA updates off. |
 | `FIRESYNC_UPDATE_HOURS` | `3` | Hours between update runs. |
 | `FIRESYNC_UPDATE_MAX_REQUESTS` | `120` | NASA requests per run (one request = one day of one sensor, whole world). |
-| `FIRESYNC_UPDATE_MAX_BACKFILL_DAYS` | `400` | How far back an update may reach after the last stored day. |
+| `FIRESYNC_UPDATE_START_DATE` | `2026-01-01` | First day the NASA API is responsible for (or the day after the archive, if later). Fixed — not a moving window, so nothing is dropped when a new year begins. 2000–2025 always comes from the archive. |
+| `FIRESYNC_UPDATE_RETRY_MINUTES` | `10` | After a run that stopped early (request limit, NASA quota, network) the next run starts this soon. |
 | `FIRESYNC_UPDATE_INTERVAL_SECONDS` | `1` | Pause between NASA requests. |
 | `FIRESYNC_QUOTA_RESERVE` | `100` | NASA transactions left untouched in the quota window. |
 | `FIRESYNC_MAX_RESPONSE_MB` | `200` | Largest accepted NASA answer. |
